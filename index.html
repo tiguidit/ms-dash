@@ -1,0 +1,1873 @@
+<!doctype html>
+<html lang="fr-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e11">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font:14px system-ui,sans-serif}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<title>Dash MicroSquirt</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap">
+<style>
+/* Layout : grappe d'instruments. Compte-tours à gauche, AFR et tuiles à droite ; en portrait tout s'empile.
+   Thème unique sombre, voulu : un tableau de bord se lit de jour comme de nuit avec le même rétroéclairage ambre. */
+:root{
+  --bg:#0a0e11;
+  --panel:#11171c;
+  --panel-2:#172028;
+  --line:#25313b;
+  --line-hi:#3b4c59;
+  --track:#1c262e;
+  --fg:#e7eef2;
+  --dim:#82919b;
+  --dim-2:#56636c;
+  --amber:#ffab2e;
+  --on-amber:#1d1406;
+  --amber-glow:rgba(255,171,46,.14);
+  --ok:#3fd98a;
+  --warn:#ffd23f;
+  --warn-bg:rgba(255,210,63,.10);
+  --crit:#ff4d3d;
+  --crit-bg:rgba(255,77,61,.13);
+  --crit-dim:#5a201b;
+  --cool:#4db2ff;
+  --led-off:#1a2228;
+  --scrim:rgba(4,6,8,.62);
+  --f-ui:"B612", "Roboto", "Segoe UI", system-ui, sans-serif;
+  --f-num:"B612 Mono", ui-monospace, "Roboto Mono", "DejaVu Sans Mono", monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{height:100%;box-sizing:border-box;background:var(--bg)}
+body{
+  min-height:100%;
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font-family:var(--f-ui);
+  font-size:14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:10px;
+  overflow-x:hidden;
+  -webkit-tap-highlight-color:transparent;
+}
+button,input,select{font:inherit;color:inherit}
+
+/* Barre du haut */
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.brand .mark{width:12px;height:12px;border-radius:50%;border:2px solid var(--amber);border-right-color:transparent;transform:rotate(-45deg)}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;font-family:var(--f-num);font-size:12px;color:var(--dim);white-space:nowrap}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--dim-2);flex:none}
+.pill[data-s="on"]{color:var(--fg);border-color:var(--line-hi)}
+.pill[data-s="on"] i{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.pill[data-s="demo"]{color:var(--amber);border-color:var(--amber)}
+.pill[data-s="demo"] i{background:var(--amber)}
+.pill[data-s="connecting"] i{background:var(--warn);animation:blink 1s steps(2) infinite}
+.pill[data-s="warn"]{color:var(--crit);border-color:var(--crit)}
+.pill[data-s="warn"] i{background:var(--crit)}
+.pill.gps{background:transparent;cursor:pointer;min-height:32px}
+.pill.gps:hover{border-color:var(--line-hi)}
+.actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.btn{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:8px 12px;min-height:40px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.btn:hover{border-color:var(--line-hi)}
+.btn:focus-visible,.pill.gps:focus-visible,.seg input:focus-visible+span,.file:focus-within{outline:2px solid var(--amber);outline-offset:2px}
+.btn.primary{background:var(--amber);border-color:var(--amber);color:var(--on-amber);font-weight:700}
+.btn.rec{color:var(--crit);border-color:var(--crit)}
+.btn.rec .dot{width:8px;height:8px;border-radius:50%;background:var(--crit);animation:blink 1s steps(2) infinite}
+.btn.icon{width:40px;padding:0;justify-content:center}
+.btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* Avis */
+.notice{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border:1px solid var(--warn);background:var(--warn-bg);border-radius:6px;line-height:1.45;max-width:100%}
+.notice[data-kind="crit"]{border-color:var(--crit);background:var(--crit-bg)}
+.notice[data-kind="info"]{border-color:var(--line-hi);background:var(--panel)}
+.notice p{margin:0;min-width:0;flex:1}
+.notice .x{flex:none;min-height:32px;padding:4px 10px}
+
+/* Grappe */
+.cluster{flex:1;display:grid;gap:10px;grid-template-columns:minmax(0,1fr)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.tach{position:relative;display:flex;flex-direction:column;gap:8px;padding:10px 10px 12px;min-width:0}
+.shift{display:flex;justify-content:center;gap:clamp(5px,1.4vw,9px)}
+.shift i{width:clamp(10px,2.6vw,16px);aspect-ratio:1;border-radius:50%;background:var(--led-off);border:1px solid var(--line)}
+.shift i.g{background:var(--ok);border-color:var(--ok);box-shadow:0 0 10px var(--ok)}
+.shift i.a{background:var(--warn);border-color:var(--warn);box-shadow:0 0 10px var(--warn)}
+.shift i.r{background:var(--crit);border-color:var(--crit);box-shadow:0 0 12px var(--crit)}
+.shift.flash i{animation:flash .18s steps(2) infinite}
+.gauge{position:relative;width:100%;aspect-ratio:1.22;max-width:100%;container-type:size}
+.gauge canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.read{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;text-align:center;pointer-events:none;padding-top:4cqh}
+.spd{font-family:var(--f-num);font-weight:700;font-size:clamp(36px,22cqmin,110px);line-height:.95;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.spd-u{display:flex;gap:4px;align-items:baseline;font-size:clamp(10px,3.4cqmin,14px);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:2px}
+.spd-u .src{letter-spacing:.04em;text-transform:none;color:var(--dim-2)}
+.spd-u .src:not(:empty)::before{content:"· "}
+.rpm{margin-top:clamp(6px,2.6cqmin,12px);font-family:var(--f-num);font-size:clamp(11px,3.4cqmin,14px);color:var(--dim);white-space:nowrap}
+.rpm b{font-size:clamp(18px,8cqmin,40px);font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.peak{margin-top:clamp(4px,2cqmin,10px);font-family:var(--f-num);font-size:clamp(10px,3.1cqmin,13px);color:var(--dim);white-space:nowrap}
+.peak b{color:var(--fg);font-weight:400}
+.sim{position:absolute;left:0;right:0;bottom:2cqh;text-align:center;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--amber)}
+.flags{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.flag{font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:5px 9px;border-radius:4px;border:1px solid var(--line);color:var(--dim-2)}
+.flag.on{color:var(--fg);border-color:var(--amber);background:var(--amber-glow)}
+.flag.on[data-f="crank"]{border-color:var(--warn);color:var(--warn)}
+.flag.on[data-f="run"]{border-color:var(--ok);color:var(--ok);background:transparent}
+
+.side{display:flex;flex-direction:column;gap:10px;min-width:0}
+.afr{padding:12px 14px 10px;display:grid;gap:10px}
+.afr-top{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.afr-main{display:grid;gap:4px}
+.afr-val{font-family:var(--f-num);font-weight:700;font-size:clamp(36px,8vw,58px);line-height:.95;font-variant-numeric:tabular-nums;color:var(--fg)}
+.afr[data-state="ok"] .afr-val{color:var(--ok)}
+.afr[data-state="warn"] .afr-val{color:var(--warn)}
+.afr[data-state="crit"] .afr-val{color:var(--crit)}
+.afr[data-state="na"] .afr-val{color:var(--dim-2)}
+.afr-sub{margin-left:auto;display:grid;grid-template-columns:auto auto;gap:3px 12px;font-family:var(--f-num);font-size:13px;color:var(--dim);align-items:baseline}
+.afr-sub b{color:var(--fg);font-weight:400;text-align:right;font-variant-numeric:tabular-nums}
+.scale{position:relative;height:30px}
+.zones{position:absolute;left:0;right:0;top:8px;height:12px;border-radius:2px;background:linear-gradient(90deg,var(--cool) 0%,var(--ok) 30%,var(--ok) 52%,var(--warn) 64%,var(--crit) 100%);opacity:.32}
+.mk{position:absolute;top:0;width:4px;height:28px;margin-left:-2px;border-radius:2px;background:var(--fg);box-shadow:0 0 0 2px var(--panel);transition:left .12s linear}
+.tgt{position:absolute;top:4px;width:0;height:20px;border-left:2px dashed var(--amber);margin-left:-1px}
+.ticks{position:relative;height:14px;font-family:var(--f-num);font-size:11px;color:var(--dim)}
+.ticks span{position:absolute;transform:translateX(-50%)}
+.ticks span:first-child{transform:none}
+.ticks span:last-child{transform:translateX(-100%)}
+.ends{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim-2)}
+
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 8px 9px;display:grid;gap:3px;min-width:0;container-type:inline-size}
+.tile .top{display:flex;justify-content:space-between;gap:6px;align-items:baseline;min-width:0}
+.tile .lbl{font-size:11.5px;letter-spacing:.02em;text-transform:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tile .u{font-family:var(--f-num);font-size:11px;color:var(--dim);flex:none}
+.tile .v{font-family:var(--f-num);font-weight:700;font-size:clamp(18px,25cqi,34px);line-height:1.05;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tile[data-state="warn"]{border-color:var(--warn)}
+.tile[data-state="warn"] .v{color:var(--warn)}
+.tile[data-state="crit"]{border-color:var(--crit);background:var(--crit-bg)}
+.tile[data-state="crit"] .v{color:var(--crit)}
+.tile[data-state="cold"] .v{color:var(--cool)}
+.tile[data-state="na"] .v{color:var(--dim-2)}
+.stale .v,.stale .rpm,.stale .afr-val{opacity:.4}
+
+.diag{display:flex;flex-wrap:wrap;gap:4px 16px;font-family:var(--f-num);font-size:11px;color:var(--dim)}
+.diag b{color:var(--fg);font-weight:400}
+
+@media (min-width:520px){.tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (orientation:landscape) and (min-width:640px), (min-width:1000px){
+  .cluster{grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr)}
+  .gauge{flex:1;aspect-ratio:auto;min-height:230px}
+  .tiles{flex:1;grid-auto-rows:1fr}
+  .tile{align-content:space-between}
+  .tach{min-height:300px}
+}
+
+/* Téléphone en paysage : toute la grappe tient dans l'écran, sans défiler */
+@media (orientation:landscape) and (max-height:520px){
+  html,body{height:100%}
+  .brand{display:none}
+  body{min-height:0;gap:6px;padding-block:6px}
+  .btn{min-height:36px;padding:6px 10px}
+  .btn.icon{width:36px}
+  .cluster{min-height:0;gap:8px}
+  .tach{min-height:0;padding:6px 8px 8px;gap:4px}
+  .gauge{min-height:0}
+  .flags{gap:4px}
+  .flag{padding:3px 7px;font-size:10px}
+  .side{min-height:0;gap:8px}
+  .afr{padding:8px 12px 6px;gap:4px}
+  .afr-val{font-size:clamp(28px,11vh,52px)}
+  .tiles{flex:1;min-height:0;grid-auto-rows:minmax(0,1fr);gap:6px}
+  .tile{container-type:size;padding:5px 8px;min-height:0;align-content:space-between}
+  .tile .v{font-size:clamp(14px,min(30cqi,50cqh),40px)}
+  .diag{display:none}
+  .notice{padding:6px 10px}
+}
+
+/* Vue ronde */
+.round{flex:1;min-height:0;position:relative}
+.round canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:block;width:300px;height:300px;max-width:100%;border-radius:50%;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.round canvas:focus-visible{outline:2px solid var(--amber);outline-offset:4px}
+body.v-round{height:100%;min-height:0}
+body.v-round .diag{display:none}
+
+/* Réglages */
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:19}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);z-index:20;overflow-y:auto;background:var(--panel);border-left:1px solid var(--line);
+  padding-top:calc(16px + env(safe-area-inset-top, 0px));padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));padding-left:18px;display:flex;flex-direction:column;gap:18px}
+.drawer h2{margin:0;font-size:15px;letter-spacing:.1em;text-transform:uppercase;text-wrap:balance}
+.dhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.group{display:grid;gap:8px;padding-top:14px;border-top:1px solid var(--line)}
+.group > .lbl{color:var(--fg)}
+.help{margin:0;font-size:12px;line-height:1.5;color:var(--dim)}
+.help code{font-family:var(--f-num);font-size:11.5px;color:var(--fg);background:var(--panel-2);padding:1px 5px;border-radius:3px;word-break:break-all}
+.mapinfo{font-family:var(--f-num);font-size:12px;line-height:1.5;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.file{position:relative;overflow:hidden}
+.file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg label{position:relative}
+.seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.seg span{display:block;padding:8px 14px;font-size:13px;color:var(--dim);border-right:1px solid var(--line)}
+.seg label:last-child span{border-right:0}
+.seg input:checked+span{background:var(--amber);color:var(--on-amber);font-weight:700}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.field{display:grid;gap:5px;min-width:0}
+.field label{font-size:12px;color:var(--dim)}
+.field input,.field select{width:100%;min-height:40px;padding:8px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);font-family:var(--f-num);font-size:14px}
+.field input:focus,.field select:focus{outline:2px solid var(--amber);outline-offset:1px}
+
+@keyframes blink{50%{opacity:.25}}
+@keyframes flash{50%{opacity:.15}}
+@media (prefers-reduced-motion:reduce){
+  .shift.flash i,.pill i,.btn.rec .dot{animation:none!important}
+  .mk{transition:none}
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="mark" aria-hidden="true"></span>Dash MicroSquirt</div>
+  <span class="pill" id="connPill" data-s="demo" role="status"><i></i><span id="connText">Démo</span></span>
+  <button class="pill gps" id="gpsPill" type="button" data-s="off" title="Vitesse GPS : touche pour activer"><i></i><span id="gpsText">GPS</span></button>
+  <div class="actions">
+    <button class="btn primary" id="btnConnect" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg><span id="btnConnectText">Connecter</span>
+    </button>
+    <button class="btn" id="btnDemo" type="button">Démo</button>
+    <button class="btn" id="btnLog" type="button"><span class="dot" hidden></span><span id="btnLogText">Log</span></button>
+    <button class="btn icon" id="btnView" type="button" aria-label="Vue ronde"></button>
+    <button class="btn icon" id="btnSettings" type="button" aria-label="Réglages">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <button class="btn icon" id="btnFull" type="button" aria-label="Plein écran">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="notice" id="notice" hidden><p id="noticeText"></p><button class="btn x" id="noticeClose" type="button">OK</button></div>
+
+<main class="cluster" id="cluster">
+  <section class="panel tach" aria-label="Compte-tours">
+    <div class="shift" id="shift" aria-hidden="true"></div>
+    <div class="gauge">
+      <canvas id="tach" aria-hidden="true"></canvas>
+      <div class="read">
+        <div class="spd" id="spdVal">—</div>
+        <div class="spd-u"><span id="spdUnit">km/h</span><span class="src" id="spdSrc"></span></div>
+        <div class="rpm"><b id="rpmVal">0</b> tr/min</div>
+        <div class="peak">max <b id="rpmPeak">0</b> tr/min · <b id="spdPeak">0</b> <span id="spdPeakU">km/h</span></div>
+      </div>
+      <div class="sim" id="simTag">Données simulées</div>
+    </div>
+    <div class="flags" id="flags">
+      <span class="flag" data-f="run">En marche</span>
+      <span class="flag" data-f="crank">Démarreur</span>
+      <span class="flag" data-f="ase">Post-démarrage</span>
+      <span class="flag" data-f="warm">Réchauffement</span>
+      <span class="flag" data-f="accel">Enrich. accél.</span>
+    </div>
+  </section>
+
+  <section class="side">
+    <div class="panel afr" id="afrPanel" data-state="na">
+      <div class="afr-top">
+        <div class="afr-main">
+          <span class="lbl" id="afrLbl">Mélange · AFR</span>
+          <span class="afr-val" id="afrVal">—</span>
+        </div>
+        <div class="afr-sub">
+          <span>cible</span><b id="afrTgt">—</b>
+          <span>écart</span><b id="afrDev">—</b>
+        </div>
+      </div>
+      <div>
+        <div class="scale"><div class="zones"></div><div class="tgt" id="afrTgtMk" hidden></div><div class="mk" id="afrMk" style="left:47%"></div></div>
+        <div class="ticks" id="afrTicks"></div>
+        <div class="ends"><span>Riche</span><span>Pauvre</span></div>
+      </div>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+</main>
+
+<main class="round" id="round" hidden>
+  <canvas id="dial" role="button" tabindex="0" aria-label="Cadran multifonction. Touche pour changer la page d'informations."></canvas>
+</main>
+
+<footer class="diag" id="diag"></footer>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" hidden aria-label="Réglages">
+  <div class="dhead"><h2>Réglages</h2><button class="btn" id="btnClose" type="button">Fermer</button></div>
+
+  <div class="group">
+    <span class="lbl">Fichier .ini TunerStudio</span>
+    <p class="help">La carte de ton MicroSquirt motoEFI (MSII Rev 2.88) est déjà intégrée. Charge un autre .ini seulement si tu changes de firmware : il dit à l'app où se trouve chaque valeur et quelle commande envoyer.</p>
+    <div class="mapinfo" id="mapInfo"></div>
+    <div class="row">
+      <span class="btn file"><input type="file" id="iniFile" accept=".ini,.INI,text/plain,application/octet-stream">Charger le .ini</span>
+      <button class="btn" id="btnMapReset" type="button">Remettre la carte motoEFI</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <span class="lbl">Affichage</span>
+    <div class="row">
+      <div class="seg" role="radiogroup" aria-label="Unités de température">
+        <label><input type="radio" name="tempUnit" id="tuC" value="C"><span>°C</span></label>
+        <label><input type="radio" name="tempUnit" id="tuF" value="F"><span>°F</span></label>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Mélange">
+        <label><input type="radio" name="afrMode" id="amA" value="afr"><span>AFR</span></label>
+        <label><input type="radio" name="afrMode" id="amL" value="lambda"><span>Lambda</span></label>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Unités de vitesse">
+        <label><input type="radio" name="spdUnit" id="suK" value="kmh"><span>km/h</span></label>
+        <label><input type="radio" name="spdUnit" id="suM" value="mph"><span>mph</span></label>
+      </div>
+    </div>
+    <p class="help">La vitesse vient du GPS du téléphone : une mise à jour par seconde, et 0 sous 2 km/h pour ignorer la dérive à l'arrêt. Touche la ligne « max » au centre du cadran pour la remettre à zéro.</p>
+    <div class="fields">
+      <div class="field"><label for="setRedline">Zone rouge (tr/min)</label><input id="setRedline" type="number" inputmode="numeric" min="1000" max="20000" step="100"></div>
+      <div class="field"><label for="setMax">Échelle max (tr/min)</label><input id="setMax" type="number" inputmode="numeric" min="2000" max="20000" step="500"></div>
+      <div class="field"><label for="setClt" id="setCltLbl">Alarme liquide (°C)</label><input id="setClt" type="number" inputmode="numeric" min="40" max="300" step="1"></div>
+      <div class="field"><label for="setStoich">Stœchio (λ = 1)</label><input id="setStoich" type="number" inputmode="decimal" min="5" max="20" step="0.1"></div>
+    </div>
+  </div>
+
+  <div class="group">
+    <span class="lbl">Trajet GPS</span>
+    <p class="help">Distance cumulée avec la vitesse GPS, gardée sur ce téléphone d'une sortie à l'autre. Elle s'affiche à la 4ᵉ page du cadran rond.</p>
+    <div class="row"><span class="mapinfo" id="tripInfo">0,0 km</span><button class="btn" id="btnTrip" type="button">Remettre à zéro</button></div>
+  </div>
+
+  <div class="group">
+    <span class="lbl">Communication</span>
+    <div class="fields">
+      <div class="field"><label for="setProto">Protocole</label>
+        <select id="setProto">
+          <option value="auto">Auto</option>
+          <option value="env">Nouveau (CRC32)</option>
+          <option value="legacy">Série simple (sans CRC)</option>
+        </select></div>
+      <div class="field"><label for="setBaud">Vitesse série</label>
+        <select id="setBaud">
+          <option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option>
+        </select></div>
+    </div>
+    <p class="help">Jumelle d'abord la clé Bluetooth dans les réglages Android (NIP habituel : 1234 ou 0000). Ferme TunerStudio sur le laptop : la clé n'accepte qu'un appareil à la fois. La vitesse série ne compte que pour un câble USB.</p>
+  </div>
+</aside>
+
+<script id="core">
+/* Cœur : protocole MegaSquirt, lecture du .ini et décodage. Aucune dépendance au DOM. */
+(function (root) {
+  'use strict';
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  // Enveloppe msEnvelope_1.0 : [longueur 16 bits][charge utile][CRC32 de la charge], gros-boutiste.
+  function wrap(payload) {
+    const p = Uint8Array.from(payload);
+    const out = new Uint8Array(p.length + 6);
+    out[0] = (p.length >> 8) & 255; out[1] = p.length & 255;
+    out.set(p, 2);
+    const c = crc32(p);
+    out[2 + p.length] = c >>> 24; out[3 + p.length] = (c >>> 16) & 255;
+    out[4 + p.length] = (c >>> 8) & 255; out[5 + p.length] = c & 255;
+    return out;
+  }
+  function unwrap(buf) {
+    if (buf.length < 2) return undefined;
+    const len = (buf[0] << 8) | buf[1];
+    if (len < 1 || len > 16384) return { error: 'longueur invalide' };
+    if (buf.length < len + 6) return undefined;
+    const p = buf.subarray(2, 2 + len);
+    const c = ((buf[2 + len] << 24) | (buf[3 + len] << 16) | (buf[4 + len] << 8) | buf[5 + len]) >>> 0;
+    if (c !== crc32(p)) return { error: 'CRC invalide' };
+    return { flag: p[0], data: p.slice(1) };
+  }
+
+  const SIZES = { U08: 1, S08: 1, U16: 2, S16: 2, U32: 4, S32: 4, F32: 4 };
+  function readRaw(dv, type, off) {
+    switch (type) {
+      case 'U08': return dv.getUint8(off);
+      case 'S08': return dv.getInt8(off);
+      case 'U16': return dv.getUint16(off);
+      case 'S16': return dv.getInt16(off);
+      case 'U32': return dv.getUint32(off);
+      case 'S32': return dv.getInt32(off);
+      case 'F32': return dv.getFloat32(off);
+    }
+    return NaN;
+  }
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  function writeRaw(dv, type, off, v) {
+    const r = Math.round(v);
+    switch (type) {
+      case 'U08': dv.setUint8(off, clamp(r, 0, 255)); break;
+      case 'S08': dv.setInt8(off, clamp(r, -128, 127)); break;
+      case 'U16': dv.setUint16(off, clamp(r, 0, 65535)); break;
+      case 'S16': dv.setInt16(off, clamp(r, -32768, 32767)); break;
+      case 'U32': dv.setUint32(off, clamp(r, 0, 4294967295)); break;
+      case 'S32': dv.setInt32(off, clamp(r, -2147483648, 2147483647)); break;
+      case 'F32': dv.setFloat32(off, v); break;
+    }
+  }
+  const ch = (type, offset, units, scale, translate) =>
+    ({ type, offset, units: units || '', scale: scale == null ? 1 : scale, translate: translate || 0 });
+  const bit = (offset, n) => ({ type: 'U08', offset, lo: n, hi: n });
+
+  // Disposition « outpc » commune à MS2/Extra et MS2 B&G. Valeur affichée = (brut + translate) × scale.
+  const MS2EXTRA_MAP = {
+    name: 'MS2/Extra standard',
+    source: 'default',
+    ochCmd: 'r\\$tsCanId\\x07%2o%2c', blockSize: null, envelope: null, signature: null,
+    channels: {
+      seconds: ch('U16', 0, 's', 1, 0),
+      pulseWidth1: ch('U16', 2, 'ms', 0.000666, 0),
+      pulseWidth2: ch('U16', 4, 'ms', 0.000666, 0),
+      rpm: ch('U16', 6, 'RPM', 1, 0),
+      advance: ch('S16', 8, 'deg', 0.1, 0),
+      squirt: ch('U08', 10, '', 1, 0),
+      engine: ch('U08', 11, '', 1, 0),
+      afrtgt1: ch('U08', 12, 'AFR', 0.1, 0),
+      afrtgt2: ch('U08', 13, 'AFR', 0.1, 0),
+      barometer: ch('S16', 16, 'kPa', 0.1, 0),
+      map: ch('S16', 18, 'kPa', 0.1, 0),
+      mat: ch('S16', 20, '°F', 0.1, 0),
+      coolant: ch('S16', 22, '°F', 0.1, 0),
+      tps: ch('S16', 24, '%', 0.1, 0),
+      batteryVoltage: ch('S16', 26, 'V', 0.1, 0),
+      afr1: ch('S16', 28, 'AFR', 0.1, 0),
+      afr2: ch('S16', 30, 'AFR', 0.1, 0),
+      knock: ch('S16', 32, '%', 0.1, 0),
+      egoCorrection1: ch('S16', 34, '%', 0.1, 0),
+      egoCorrection2: ch('S16', 36, '%', 0.1, 0),
+      airCorrection: ch('S16', 38, '%', 0.1, 0),
+      warmupEnrich: ch('S16', 40, '%', 1, 0),
+      accelEnrich: ch('S16', 42, 'ms', 0.1, 0),
+      baroCorrection: ch('S16', 46, '%', 0.1, 0),
+      gammaEnrich: ch('S16', 48, '%', 1, 0),
+      veCurr1: ch('S16', 50, '%', 0.1, 0)
+    },
+    bits: {
+      ready: bit(11, 0), crank: bit(11, 1), startw: bit(11, 2), warmup: bit(11, 3),
+      tpsaccaen: bit(11, 4), tpsaccden: bit(11, 5), mapaccaen: bit(11, 6), mapaccden: bit(11, 7)
+    }
+  };
+  // Carte tirée de microsquirt-II_V3.00MS_Designed_by_motoEFI_tunerstudio_1.ini
+  const DEFAULT_MAP = {
+    name: "motoEFI MicroSquirt-II (MSII Rev 2.88)",
+    source: 'default',
+    ochCmd: "a", blockSize: 82, envelope: false, signature: "MSII Rev 2.88000   ",
+    channels: {
+      seconds: { type: 'U16', offset: 0, units: "s", scale: 1, translate: 0 },
+      pulseWidth1: { type: 'U16', offset: 2, units: "s", scale: 0.001, translate: 0 },
+      pulseWidth2: { type: 'U16', offset: 4, units: "s", scale: 0.001, translate: 0 },
+      rpm: { type: 'S16', offset: 6, units: "RPM", scale: 1, translate: 0 },
+      advance: { type: 'S16', offset: 8, units: "deg", scale: 0.1, translate: 0 },
+      squirt: { type: 'U08', offset: 10, units: "bit", scale: 1, translate: 0 },
+      engine: { type: 'U08', offset: 11, units: "bit", scale: 1, translate: 0 },
+      afrtgt1: { type: 'U08', offset: 12, units: "AFR", scale: 10, translate: 0 },
+      afrtgt2: { type: 'U08', offset: 13, units: "AFR", scale: 10, translate: 0 },
+      wbo2_en1: { type: 'U08', offset: 14, units: "", scale: 1, translate: 0 },
+      wbo2_en2: { type: 'U08', offset: 15, units: "", scale: 1, translate: 0 },
+      barometer: { type: 'S16', offset: 16, units: "kPa", scale: 0.1, translate: 0 },
+      map: { type: 'S16', offset: 18, units: "kPa", scale: 0.1, translate: 0 },
+      mat: { type: 'S16', offset: 20, units: "F", scale: 0.1, translate: 0 },
+      coolant: { type: 'S16', offset: 22, units: "F", scale: 0.1, translate: 0 },
+      tps: { type: 'S16', offset: 24, units: "%", scale: 0.1, translate: 0 },
+      batteryVoltage: { type: 'S16', offset: 26, units: "v", scale: 0.1, translate: 0 },
+      afr1: { type: 'S16', offset: 28, units: "AFR", scale: 0.1, translate: 0 },
+      afr2: { type: 'S16', offset: 30, units: "AFR", scale: 0.1, translate: 0 },
+      knock: { type: 'S16', offset: 32, units: "v", scale: 0.1, translate: 0 },
+      egoCorrection1: { type: 'S16', offset: 34, units: "%", scale: 1, translate: 0 },
+      egoCorrection2: { type: 'S16', offset: 36, units: "%", scale: 1, translate: 0 },
+      airCorrection: { type: 'S16', offset: 38, units: "%", scale: 1, translate: 0 },
+      warmupEnrich: { type: 'S16', offset: 40, units: "%", scale: 1, translate: 0 },
+      accelEnrich: { type: 'S16', offset: 42, units: "ms", scale: 0.1, translate: 0 },
+      tpsfuelcut: { type: 'S16', offset: 44, units: "%", scale: 1, translate: 0 },
+      baroCorrection: { type: 'S16', offset: 46, units: "%", scale: 1, translate: 0 },
+      gammaEnrich: { type: 'S16', offset: 48, units: "%", scale: 1, translate: 0 },
+      veCurr1: { type: 'S16', offset: 50, units: "%", scale: 1, translate: 0 },
+      veCurr2: { type: 'S16', offset: 52, units: "%", scale: 1, translate: 0 },
+      iacstep: { type: 'S16', offset: 54, units: "", scale: 1, translate: 0 },
+      coldAdvDeg: { type: 'S16', offset: 56, units: "deg", scale: 0.1, translate: 0 },
+      tpsDOT: { type: 'S16', offset: 58, units: "%/s", scale: 1, translate: 0 },
+      mapDOT: { type: 'S16', offset: 60, units: "kPa/s", scale: 1, translate: 0 },
+      dwell: { type: 'S16', offset: 62, units: "ms", scale: 0.1, translate: 0 },
+      tpm: { type: 'S16', offset: 64, units: "%", scale: 0.1, translate: 0 },
+      deltaT: { type: 'U16', offset: 66, units: "usec", scale: 1, translate: 0 },
+      egoV1: { type: 'S16', offset: 68, units: "Volts", scale: 0.01, translate: 0 },
+      calcMAP: { type: 'S16', offset: 70, units: "kpa", scale: 0.1, translate: 0 },
+      pw_open: { type: 'S16', offset: 72, units: "usec", scale: 1, translate: 0 },
+      err_flag: { type: 'U08', offset: 74, units: "bit", scale: 1, translate: 0 }
+    },
+    bits: {
+      ready: { type: 'U08', offset: 11, lo: 0, hi: 0 },
+      crank: { type: 'U08', offset: 11, lo: 1, hi: 1 },
+      startw: { type: 'U08', offset: 11, lo: 2, hi: 2 },
+      warmup: { type: 'U08', offset: 11, lo: 3, hi: 3 },
+      tpsaen: { type: 'U08', offset: 11, lo: 4, hi: 4 },
+      tpsden: { type: 'U08', offset: 11, lo: 5, hi: 5 },
+      mapaen: { type: 'U08', offset: 11, lo: 6, hi: 6 },
+      SynchInj: { type: 'U08', offset: 10, lo: 6, hi: 6 }
+    }
+  };
+
+  // Commande de lecture tirée de ochGetCommand : \$tsCanId = 0, \xNN = octet, %2o = position, %2c = nombre d'octets.
+  function ochBytes(cmd, size) {
+    const s = String(cmd || 'A'), out = [];
+    let counted = false;
+    for (let i = 0; i < s.length;) {
+      if (s.startsWith('\\$tsCanId', i)) { out.push(0); i += 9; continue; }
+      if (s[i] === '\\' && s[i + 1] === 'x' && /^[0-9a-fA-F]{2}$/.test(s.substr(i + 2, 2))) { out.push(parseInt(s.substr(i + 2, 2), 16)); i += 4; continue; }
+      if (s[i] === '%') {
+        const m = s.slice(i).match(/^%(\d?)([oc])/);
+        if (m) {
+          const n = +(m[1] || 1), v = m[2] === 'o' ? 0 : size;
+          for (let k = n - 1; k >= 0; k--) out.push(Math.floor(v / 2 ** (8 * k)) & 255);
+          if (m[2] === 'c') counted = true;
+          i += m[0].length; continue;
+        }
+      }
+      out.push(s.charCodeAt(i) & 255); i++;
+    }
+    return { bytes: Uint8Array.from(out), counted };
+  }
+
+  function decode(map, bytes, names) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const out = {};
+    for (const n of names) {
+      const c = map.channels[n];
+      if (!c) continue;
+      const sz = SIZES[c.type];
+      if (!sz || c.offset + sz > bytes.length) continue;
+      out[n] = (readRaw(dv, c.type, c.offset) + c.translate) * c.scale;
+    }
+    return out;
+  }
+  function bitValue(map, bytes, name) {
+    const b = name && map.bits[name];
+    if (!b) return null;
+    const sz = SIZES[b.type] || 1;
+    if (b.offset + sz > bytes.length) return null;
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let raw = readRaw(dv, b.type, b.offset);
+    if (raw < 0) raw += 2 ** (8 * sz);
+    const width = b.hi - b.lo + 1;
+    return Math.floor(raw / 2 ** b.lo) % (2 ** width);
+  }
+  // Inverse de decode, sert au mode démo.
+  function encode(map, values, bits, size) {
+    const bytes = new Uint8Array(size);
+    const dv = new DataView(bytes.buffer);
+    for (const name in values) {
+      const c = map.channels[name], v = values[name];
+      if (!c || v == null || !SIZES[c.type] || c.offset + SIZES[c.type] > size || !c.scale) continue;
+      writeRaw(dv, c.type, c.offset, v / c.scale - c.translate);
+    }
+    for (const name in bits) {
+      const b = map.bits[name];
+      if (!b) continue;
+      const sz = SIZES[b.type] || 1;
+      if (b.offset + sz > size) continue;
+      let raw = sz === 1 ? dv.getUint8(b.offset) : sz === 2 ? dv.getUint16(b.offset) : dv.getUint32(b.offset);
+      const width = b.hi - b.lo + 1;
+      const field = (bits[name] ? 1 : 0) % (2 ** width);
+      raw = (raw - (Math.floor(raw / 2 ** b.lo) % (2 ** width)) * 2 ** b.lo) + field * 2 ** b.lo;
+      raw = Math.max(0, raw) % (2 ** (8 * sz));
+      if (sz === 1) dv.setUint8(b.offset, raw); else if (sz === 2) dv.setUint16(b.offset, raw); else dv.setUint32(b.offset, raw);
+    }
+    return bytes;
+  }
+
+  // ---- Lecture du .ini TunerStudio ----
+  function stripComment(line) {
+    let q = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') q = !q;
+      else if (c === ';' && !q) return line.slice(0, i);
+    }
+    return line;
+  }
+  function splitFields(s) {
+    const out = []; let cur = '', q = false, depth = 0;
+    for (const c of s) {
+      if (c === '"') q = !q;
+      else if (!q && c === '{') depth++;
+      else if (!q && c === '}') depth--;
+      if (c === ',' && !q && depth === 0) { out.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    out.push(cur.trim());
+    return out;
+  }
+  const unquote = s => String(s || '').trim().replace(/^"([\s\S]*)"$/, '$1');
+  function num(s, dflt) {
+    if (s == null || String(s).trim() === '') return dflt;
+    const t = String(s).trim();
+    if (t[0] === '{') return NaN;           // expression calculée : ignorée
+    const v = Number(t);
+    return Number.isFinite(v) ? v : NaN;
+  }
+  function parseIni(text, defines) {
+    defines = defines || new Set();
+    const map = { name: '', source: 'ini', ochCmd: null, blockSize: null, envelope: null, signature: null, channels: {}, bits: {} };
+    let section = '';
+    const stack = [];
+    const active = () => stack.every(s => s.active);
+    for (const rawLine of text.split(/\r?\n/)) {
+      const line = stripComment(rawLine).trim();
+      if (!line) continue;
+      if (line[0] === '#') {
+        const m = line.match(/^#\s*(\w+)\s*(\w+)?/);
+        if (!m) continue;
+        const kw = m[1].toLowerCase(), sym = m[2] || '';
+        const top = stack[stack.length - 1];
+        if (kw === 'if' || kw === 'ifdef') { const on = defines.has(sym); stack.push({ active: on, taken: on }); }
+        else if (kw === 'ifndef') { const on = !defines.has(sym); stack.push({ active: on, taken: on }); }
+        else if (kw === 'elif' && top) { const on = !top.taken && defines.has(sym); top.active = on; top.taken = top.taken || on; }
+        else if (kw === 'else' && top) { top.active = !top.taken; top.taken = true; }
+        else if (kw === 'endif') stack.pop();
+        continue;
+      }
+      if (!active()) continue;
+      if (line[0] === '[') {
+        const e = line.indexOf(']');
+        section = (e > 0 ? line.slice(1, e) : line.slice(1)).trim().toLowerCase();
+        continue;
+      }
+      const eq = line.indexOf('=');
+      if (eq < 1) continue;
+      const key = line.slice(0, eq).trim();
+      const val = line.slice(eq + 1).trim();
+      if (key === 'signature' && map.signature == null) { const s = unquote(splitFields(val)[0]); if (s) map.signature = s; continue; }
+      if (key === 'messageEnvelopeFormat') { map.envelope = /envelope/i.test(val); continue; }
+      if (section !== 'outputchannels') continue;
+      if (key === 'ochBlockSize') { const v = parseInt(val, 10); if (v > 0) map.blockSize = v; continue; }
+      if (key === 'ochGetCommand') { map.ochCmd = unquote(val); continue; }
+      const f = splitFields(val);
+      const kind = (f[0] || '').toLowerCase();
+      if (kind === 'scalar') {
+        const type = (f[1] || '').toUpperCase(), off = parseInt(f[2], 10);
+        if (!SIZES[type] || !(off >= 0)) continue;
+        const scale = num(f[4], 1), tr = num(f[5], 0);
+        if (!Number.isFinite(scale) || !Number.isFinite(tr)) continue;
+        map.channels[key] = ch(type, off, unquote(f[3]), scale, tr);
+      } else if (kind === 'bits') {
+        const type = (f[1] || '').toUpperCase(), off = parseInt(f[2], 10);
+        const m = (f[3] || '').match(/\[\s*(\d+)\s*:\s*(\d+)\s*\]/);
+        if (!SIZES[type] || !(off >= 0) || !m) continue;
+        const a = +m[1], b = +m[2];
+        map.bits[key] = { type, offset: off, lo: Math.min(a, b), hi: Math.max(a, b) };
+      }
+    }
+    if (map.envelope == null) map.envelope = false;   // pas de messageEnvelopeFormat = protocole simple
+    if (!map.ochCmd) map.ochCmd = map.envelope ? 'r\\$tsCanId\\x07%2o%2c' : 'A';
+    return map;
+  }
+  function findKey(obj, aliases) {
+    for (const a of aliases) if (Object.prototype.hasOwnProperty.call(obj, a)) return a;
+    const keys = Object.keys(obj);
+    for (const a of aliases) { const k = keys.find(x => x.toLowerCase() === a.toLowerCase()); if (k) return k; }
+    return null;
+  }
+  // Sans CRC, un paquet décalé se repère à des valeurs impossibles : RPM négatif ou batterie hors de 4 à 30 V.
+  function plausible(map, bytes) {
+    if (!map || !map.channels) return true;
+    const r = findKey(map.channels, ['rpm']), bv = findKey(map.channels, ['batteryVoltage', 'batt', 'battery']);
+    const v = decode(map, bytes, [r, bv].filter(Boolean));
+    if (r && v[r] != null && (v[r] < 0 || v[r] > 25000)) return false;
+    if (bv && v[bv] != null && (v[bv] < 4 || v[bv] > 30)) return false;
+    return true;
+  }
+  const printable = b => Array.from(b, x => (x >= 32 && x < 127) ? String.fromCharCode(x) : ' ').join('').replace(/\s+/g, ' ').trim();
+
+  // ---- Lien série : Web Serial (Bluetooth RFCOMM sur Android, USB sur ordinateur) ----
+  class Ecu {
+    constructor(port, opts) {
+      this.port = port; this.opts = opts || {};
+      this.buf = new Uint8Array(0); this.lastRx = 0;
+      this.listeners = new Set();
+      this.closing = false; this.alive = false;
+      this.mode = null; this.signature = ''; this.blockSize = 0;
+      this.onclose = null;
+    }
+    async open() {
+      await this.port.open({ baudRate: this.opts.baud || 115200, bufferSize: 16384 });
+      this.alive = true;
+      this.writer = this.port.writable.getWriter();
+      this.readDone = this.readLoop();
+    }
+    async readLoop() {
+      let errs = 0;
+      try {
+        while (this.port.readable && !this.closing) {
+          const r = this.port.readable.getReader();
+          this.reader = r;
+          let ended = false;
+          try {
+            for (;;) {
+              const { value, done } = await r.read();
+              if (done) { ended = true; break; }
+              if (value && value.length) { errs = 0; this.push(value); }
+            }
+          } catch (e) {
+            this.err = e;
+            if (!e || e.name === 'NetworkError' || ++errs > 20) ended = true;
+          } finally {
+            try { r.releaseLock(); } catch (_) { /* déjà libéré */ }
+          }
+          if (ended) break;
+        }
+      } finally {
+        this.alive = false; this.reader = null;
+        if (this.onclose) this.onclose(this.closing);
+      }
+    }
+    push(chunk) {
+      const n = new Uint8Array(this.buf.length + chunk.length);
+      n.set(this.buf); n.set(chunk, this.buf.length);
+      this.buf = n; this.lastRx = now();
+      this.listeners.forEach(f => f());
+    }
+    clear() { this.buf = new Uint8Array(0); }
+    async send(bytes) { await this.writer.write(bytes); }
+    waitFor(test, timeout) {
+      return new Promise(resolve => {
+        let done = false, iv = null, to = null;
+        const finish = v => {
+          if (done) return; done = true;
+          clearInterval(iv); clearTimeout(to); this.listeners.delete(check);
+          resolve(v);
+        };
+        const check = () => { const v = test(this.buf); if (v !== undefined) finish(v); };
+        this.listeners.add(check);
+        iv = setInterval(check, 15);
+        to = setTimeout(() => finish(undefined), timeout);
+        check();
+      });
+    }
+    // Vide la ligne : attend ms, puis que plus rien n'arrive pendant 60 ms (1 s au plus), pour repartir aligné.
+    async drain(ms) {
+      const end = now() + 1000;
+      await sleep(ms);
+      while (now() - this.lastRx < 60 && now() < end) await sleep(20);
+      this.clear();
+    }
+    async txEnv(payload, timeout) {
+      this.clear();
+      await this.send(wrap(payload));
+      const r = await this.waitFor(b => unwrap(b), timeout || 600);
+      if (!r) throw new Error('pas de réponse');
+      if (r.error) throw new Error(r.error);
+      if (r.flag >= 0x80) throw new Error('erreur ECU 0x' + r.flag.toString(16));
+      return r;
+    }
+    async quiet(ms, cap) { const end = now() + cap; while (now() - this.lastRx < ms && now() < end) await sleep(5); }
+    async txLegacy(cmd, o) {
+      const expect = o.expect || 0, min = o.min || 1, idle = o.idle || 60;
+      if (expect) {
+        // Chaque réponse est consommée en entier ; un octet reçu depuis vient d'une réponse décalée.
+        await this.quiet(30, 300);
+        if (this.buf.length) { this.clear(); throw new Error('octets en trop'); }
+      }
+      this.clear();
+      await this.send(cmd);
+      // Taille connue : on exige le bloc complet. Une pause du Bluetooth au milieu d'une réponse ne doit pas
+      // couper le paquet, sinon la fin arrive au cycle suivant et décale toutes les valeurs.
+      const got = await this.waitFor(b => {
+        if (expect) return b.length >= expect ? b : undefined;
+        if (b.length >= min && now() - this.lastRx > idle) return b;
+        return undefined;
+      }, o.timeout || 700);
+      if (got) {
+        const frame = expect && got.length > expect ? got.slice(got.length - expect) : got.slice();
+        this.clear();
+        return frame;
+      }
+      if (!expect && this.buf.length >= min) { const frame = this.buf.slice(); this.clear(); return frame; }
+      throw new Error(this.buf.length ? 'paquet incomplet' : 'pas de réponse');
+    }
+    async detect(pref, map) {
+      await this.drain(150);
+      const tryEnv = pref === 'env' || (pref !== 'legacy' && !(map && map.envelope === false));
+      if (tryEnv) {
+        try {
+          const r = await this.txEnv([0x51], 900);           // 'Q' enveloppé
+          this.mode = 'env'; this.signature = printable(r.data);
+          return this.mode;
+        } catch (e) {
+          if (pref === 'env') throw e;
+        }
+        await this.drain(400);
+      }
+      this.mode = 'legacy';
+      try {
+        const b = await this.txLegacy(new Uint8Array([0x51]), { min: 3, idle: 120, timeout: 1100 });  // 'Q' brut
+        const s = printable(b);
+        if (/[A-Za-z]{2}/.test(s)) { this.signature = s; return this.mode; }
+      } catch (_) { /* pas de réponse à Q : on tente la lecture directe */ }
+      await this.drain(200);
+      await this.realtime(8, map);
+      this.signature = '';
+      return this.mode;
+    }
+    async realtime(size, map) {
+      const och = ochBytes(map && map.ochCmd ? map.ochCmd : 'A', size);
+      if (this.mode === 'env') {
+        const r = await this.txEnv(och.bytes, 500);
+        if (r.data.length < size) throw new Error('paquet trop court');
+        return r.data;
+      }
+      const expect = och.counted ? size : (this.blockSize || 0);
+      const b = await this.txLegacy(och.bytes, { expect, min: size, idle: 100, timeout: 650 });
+      if (b.length < size) throw new Error('paquet trop court');
+      if (!plausible(map, b)) throw new Error('paquet incohérent');
+      return b;
+    }
+    async close() {
+      this.closing = true;
+      try { if (this.reader) await this.reader.cancel(); } catch (_) { /* ignore */ }
+      try { await this.readDone; } catch (_) { /* ignore */ }
+      try { this.writer.releaseLock(); } catch (_) { /* ignore */ }
+      try { await this.port.close(); } catch (_) { /* ignore */ }
+    }
+  }
+
+  root.MSCore = { crc32, wrap, unwrap, SIZES, DEFAULT_MAP, MS2EXTRA_MAP, ochBytes, plausible, decode, bitValue, encode, parseIni, findKey, printable, Ecu, sleep };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+
+<script id="app">
+(function () {
+  'use strict';
+  const C = window.MSCore;
+  const $ = id => document.getElementById(id);
+  const SPP = '00001101-0000-1000-8000-00805f9b34fb';
+  const inFrame = (() => { try { return window.top !== window.self; } catch (_) { return true; } })();
+  const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Ouverte comme fichier (content:// sur Android, file:// sur ordinateur) : Chrome bloque GPS et Bluetooth sans offrir de réglage.
+  const asFile = /^(file|content):$/.test(location.protocol);
+  const FILE_MSG = "L'app est ouverte comme fichier (adresse content:// ou file://). Chrome bloque alors le GPS et le Bluetooth, et n'offre aucun réglage pour les permettre. Ouvre-la à partir de son adresse https (GitHub Pages, voir LISEZMOI).";
+
+  const ALIASES = {
+    rpm: ['rpm'],
+    afr: ['afr1', 'afr', 'AFR1'],
+    afrTgt: ['afrtgt1', 'afrTarget1', 'afrtgt1raw', 'afrtgt'],
+    clt: ['coolant', 'clt'],
+    iat: ['mat', 'iat'],
+    map: ['map'],
+    tps: ['tps', 'throttle'],
+    batt: ['batteryVoltage', 'batt', 'battery'],
+    adv: ['advance', 'adv_deg', 'ignitionAdvance', 'spkadv1'],
+    pw: ['pulseWidth1', 'pulseWidth', 'pw1'],
+    ego: ['egoCorrection1', 'egoCorrection', 'egocor1']
+  };
+  const BIT_ALIASES = { run: ['ready', 'running'], crank: ['crank', 'cranking'], ase: ['startw', 'ase'], warm: ['warmup'], tae: ['tpsaccaen', 'tpsaen'], mae: ['mapaccaen', 'mapaen'] };
+  const ENGINE_BIT = { run: 0, crank: 1, ase: 2, warm: 3, tae: 4, mae: 6 };
+
+  const TILES = [
+    { key: 'clt', label: 'Liquide', unit: 'temp', dec: 0 },
+    { key: 'iat', label: 'Air adm.', unit: 'temp', dec: 0 },
+    { key: 'map', label: 'MAP', unit: 'kPa', dec: 0 },
+    { key: 'tps', label: 'Papillon', unit: '%', dec: 0 },
+    { key: 'batt', label: 'Batterie', unit: 'V', dec: 1 },
+    { key: 'adv', label: 'Avance', unit: '°', dec: 1 },
+    { key: 'pw', label: 'Inj. PW', unit: 'ms', dec: 2 },
+    { key: 'ego', label: 'Corr. O2', unit: '%', dec: 0, signed: true }
+  ];
+
+  const DEF = { tempUnit: 'C', afrMode: 'afr', spdUnit: 'kmh', redline: 7000, rpmMax: 8000, cltAlarmC: 105, stoich: 14.7, proto: 'auto', baud: 115200 };
+  const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* stockage indisponible */ } };
+
+  const S = {
+    set: Object.assign({}, DEF, load('msdash.settings', {})),
+    map: C.DEFAULT_MAP,
+    res: {}, resBits: {}, engineCh: null, need: [], reqSize: 64,
+    source: 'demo', port: null, ecu: null, userClosed: false, everConnected: false, rt: null,
+    vals: {}, flags: {}, view: {}, peak: 0, peakSpd: 0, speedSrc: '', lastData: 0, dirty: true,
+    viewMode: 'round', dialD: 0, afrState: 'na', trip: Number(load('msdash.trip', 0)) || 0, tripSaved: 0,
+    hz: 0, errs: 0, log: null, wake: null, signature: ''
+  };
+  const G = { watch: null, state: 'off', speed: null, acc: null, t: 0, last: null, userAsked: false };   // GPS, vitesse en km/h
+  const savedMap = load('msdash.map.v2', null);
+  if (savedMap && savedMap.channels && Object.keys(savedMap.channels).length) S.map = savedMap;
+
+  // ---------- Carte des canaux ----------
+  function applyMap() {
+    const m = S.map;
+    S.res = {};
+    for (const k in ALIASES) S.res[k] = C.findKey(m.channels, ALIASES[k]);
+    // Une cible AFR avec une échelle > 0,5 ne peut pas être juste (pas de 10 AFR) : on l'ignore.
+    S.tgtIgnored = !!(S.res.afrTgt && Math.abs(m.channels[S.res.afrTgt].scale) > 0.5);
+    if (S.tgtIgnored) S.res.afrTgt = null;
+    S.resBits = {};
+    for (const k in BIT_ALIASES) S.resBits[k] = C.findKey(m.bits || {}, BIT_ALIASES[k]);
+    S.engineCh = C.findKey(m.channels, ['engine']);
+    const names = new Set(Object.values(S.res).filter(Boolean));
+    if (S.engineCh) names.add(S.engineCh);
+    S.need = [...names];
+    let end = 8;
+    for (const n of S.need) { const c = m.channels[n]; end = Math.max(end, c.offset + C.SIZES[c.type]); }
+    for (const k in S.resBits) { const b = S.resBits[k] && m.bits[S.resBits[k]]; if (b) end = Math.max(end, b.offset + C.SIZES[b.type]); }
+    S.reqSize = end;
+    if (S.ecu) S.ecu.blockSize = m.blockSize || 0;
+    buildTiles();
+    renderMapInfo();
+    S.dirty = true;
+  }
+  function renderMapInfo() {
+    const m = S.map, n = Object.keys(m.channels).length;
+    const missing = Object.keys(ALIASES).filter(k => !S.res[k] && !(k === 'afrTgt' && S.tgtIgnored));
+    const cmd = String(m.ochCmd || 'A').replace(/\\\$tsCanId/g, '').replace(/%2o%2c/, '');
+    const lines = [
+      '<b>' + esc(m.name || 'Carte') + '</b>',
+      n + ' canaux' + (m.blockSize ? ' · bloc ' + m.blockSize + ' octets' : '') + ' · lecture ' + S.reqSize + ' octets',
+      'Commande « ' + esc(cmd) + ' » · ' + (m.envelope === false ? 'série simple' : m.envelope ? 'CRC32' : 'détection auto'),
+      m.signature ? 'Signature : ' + esc(m.signature) : 'Signature : non précisée'
+    ];
+    if (S.tgtIgnored) lines.push('Cible AFR ignorée : échelle ×' + m.channels[C.findKey(m.channels, ALIASES.afrTgt)].scale + ' dans le .ini');
+    if (missing.length) lines.push('Introuvable : ' + missing.join(', '));
+    $('mapInfo').innerHTML = lines.join('<br>');
+  }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  // ---------- Valeurs affichées ----------
+  function isFahrenheit(name) {
+    const u = (S.map.channels[name] && S.map.channels[name].units) || '';
+    if (/F/.test(u)) return true;
+    if (/C/.test(u)) return false;
+    return true;      // le MicroSquirt travaille en °F à l'interne
+  }
+  function tempOut(name, v) {
+    if (v == null) return null;
+    const f = isFahrenheit(name);
+    if (S.set.tempUnit === 'C') return f ? (v - 32) * 5 / 9 : v;
+    return f ? v : v * 9 / 5 + 32;
+  }
+  function computeView() {
+    const v = S.vals, r = S.res;
+    const g = k => (r[k] && v[r[k]] != null && Number.isFinite(v[r[k]])) ? v[r[k]] : null;
+    const egoRaw = g('ego');
+    const tgt = g('afrTgt');
+    S.view = {
+      rpm: g('rpm'), afr: g('afr'), afrTgt: tgt != null && tgt >= 6 && tgt <= 25 ? tgt : null,   // ignore une cible hors plage (échelle douteuse)
+      clt: tempOut(r.clt, g('clt')), iat: tempOut(r.iat, g('iat')),
+      map: g('map'), tps: g('tps'), batt: g('batt'), adv: g('adv'), pw: g('pw'),
+      ego: egoRaw == null ? null : egoRaw - 100
+    };
+    const si = speedInfo();
+    S.view.kmh = si.kmh;
+    S.view.speed = si.kmh == null ? null : (S.set.spdUnit === 'mph' ? si.kmh * 0.621371 : si.kmh);
+    S.speedSrc = si.src;
+  }
+
+  // ---------- Vitesse GPS ----------
+  function speedInfo() {
+    if (G.speed != null && performance.now() - G.t < 4000) return { kmh: G.speed, src: 'GPS' };
+    if (S.source === 'demo') return { kmh: sim.speed, src: 'simulée' };
+    return { kmh: null, src: G.state === 'denied' ? 'GPS refusé' : G.state === 'none' ? 'pas de GPS' : G.state === 'off' ? 'GPS éteint' : 'GPS…' };
+  }
+  function dist(a, b) {
+    const R = 6371000, k = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * k, dLon = (b.lon - a.lon) * k;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * k) * Math.cos(b.lat * k) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  function onPos(p) {
+    const c = p.coords, t = p.timestamp || Date.now();
+    const here = { lat: c.latitude, lon: c.longitude, t };
+    let ms = (typeof c.speed === 'number' && Number.isFinite(c.speed) && c.speed >= 0) ? c.speed : null;
+    if (ms == null && G.last && (c.accuracy || 99) <= 30) {
+      // Pas de vitesse fournie : on la calcule entre deux positions, lissée.
+      const dt = (t - G.last.t) / 1000;
+      if (dt >= 0.5 && dt <= 5) { const raw = dist(G.last, here) / dt; ms = G.speed == null ? raw : 0.5 * raw + 0.5 * G.speed / 3.6; }
+    }
+    G.last = here;
+    if (ms != null) {
+      const kmh = ms * 3.6;
+      G.speed = kmh < 2 ? 0 : kmh;
+      if (G.lastSpdT) { const dt = (t - G.lastSpdT) / 1000; if (dt > 0 && dt <= 5) addTrip(((G.prevKmh || 0) + G.speed) / 2 * dt / 3600); }
+      G.lastSpdT = t; G.prevKmh = G.speed; G.t = performance.now();
+    }
+    G.acc = c.accuracy; G.state = 'fix';
+    renderGps(); S.dirty = true;
+  }
+  function onPosErr(e) {
+    if (e && e.code === 1) {
+      G.state = 'denied';
+      if (G.userAsked) notice(asFile ? FILE_MSG : inFrame
+        ? "Le GPS est bloqué dans cet aperçu. La vitesse GPS fonctionne dans la version hébergée, installée sur ton téléphone."
+        : "La position est refusée. Dans Chrome, touche l'icône à gauche de l'adresse, puis Autorisations › Position › Autoriser. Touche ensuite GPS.", 'info');
+    } else if (G.state !== 'fix') G.state = 'search';
+    renderGps(); S.dirty = true;
+  }
+  function addTrip(km) {
+    S.trip += km;
+    if (performance.now() - S.tripSaved > 5000) { save('msdash.trip', S.trip); S.tripSaved = performance.now(); }
+  }
+  function gpsStart(user) {
+    if (user) G.userAsked = true;
+    if (!('geolocation' in navigator)) { G.state = 'none'; renderGps(); return; }
+    if (G.watch != null) { try { navigator.geolocation.clearWatch(G.watch); } catch (_) { /* ignore */ } }
+    G.state = 'search'; renderGps();
+    try {
+      G.watch = navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+    } catch (_) { G.state = 'denied'; renderGps(); }
+  }
+  function renderGps() {
+    const fresh = G.speed != null && performance.now() - G.t < 4000;
+    const st = G.state === 'fix' && !fresh ? 'search' : G.state;
+    $('gpsPill').dataset.s = { off: 'off', search: 'connecting', fix: 'on', denied: 'warn', none: 'warn' }[st] || 'off';
+    $('gpsText').textContent = st === 'fix' ? 'GPS ±' + Math.round(G.acc || 0) + ' m'
+      : st === 'search' ? 'GPS…' : st === 'denied' ? 'GPS refusé' : st === 'none' ? 'Pas de GPS' : 'GPS';
+  }
+
+  // ---------- Tuiles ----------
+  function buildTiles() {
+    const box = $('tiles');
+    box.innerHTML = TILES.map(t =>
+      '<div class="tile" id="t-' + t.key + '" data-state="na"><div class="top"><span class="lbl">' + t.label +
+      '</span><span class="u" id="u-' + t.key + '"></span></div><div class="v" id="v-' + t.key + '">—</div></div>').join('');
+  }
+  const cToUser = c => S.set.tempUnit === 'C' ? c : c * 9 / 5 + 32;
+  function tileState(key, val) {
+    if (val == null) return 'na';
+    const s = S.set;
+    if (key === 'clt') {
+      const alarm = cToUser(s.cltAlarmC);
+      if (val >= alarm) return 'crit';
+      if (val >= alarm - (s.tempUnit === 'C' ? 8 : 15)) return 'warn';
+      if (val < cToUser(45)) return 'cold';
+      return 'ok';
+    }
+    if (key === 'iat') return val >= cToUser(60) ? 'warn' : 'ok';
+    if (key === 'batt') return val < 11.5 ? 'crit' : (val < 12.2 || val > 15.2) ? 'warn' : 'ok';
+    if (key === 'ego') return Math.abs(val) >= 15 ? 'warn' : 'ok';
+    return 'ok';
+  }
+  function fmt(v, dec, signed) {
+    if (v == null || !Number.isFinite(v)) return '—';
+    let t = v.toFixed(dec);
+    if (Number(t) === 0) t = (0).toFixed(dec);
+    return signed && Number(t) > 0 ? '+' + t : t;
+  }
+
+  // ---------- Rendu des lectures (10 Hz) ----------
+  const LAMBDA_RANGE = [0.68, 1.36], AFR_RANGE = [10, 20];
+  function renderReadouts() {
+    if (!S.dirty) return;
+    S.dirty = false;
+    computeView();
+    const V = S.view, s = S.set;
+
+    const rpm = V.rpm == null ? 0 : V.rpm;
+    $('rpmVal').textContent = (Math.round(rpm / 10) * 10).toLocaleString('fr-CA');
+    if (rpm > S.peak) S.peak = rpm;
+    $('rpmPeak').textContent = (Math.round(S.peak / 10) * 10).toLocaleString('fr-CA');
+
+    const mph = s.spdUnit === 'mph', toUnit = k => mph ? k * 0.621371 : k;
+    $('spdVal').textContent = V.speed == null ? '—' : String(Math.round(V.speed));
+    if (V.kmh != null && V.kmh > S.peakSpd) S.peakSpd = V.kmh;
+    $('spdPeak').textContent = String(Math.round(toUnit(S.peakSpd)));
+    $('spdUnit').textContent = $('spdPeakU').textContent = mph ? 'mph' : 'km/h';
+    $('spdSrc').textContent = S.speedSrc || '';
+
+    for (const t of TILES) {
+      const val = V[t.key];
+      const el = $('t-' + t.key);
+      if (!el) continue;
+      const present = !!S.res[t.key];
+      el.dataset.state = present ? tileState(t.key, val) : 'na';
+      $('v-' + t.key).textContent = present ? fmt(val, t.dec, t.signed) : '—';
+      $('u-' + t.key).textContent = t.unit === 'temp' ? '°' + s.tempUnit : t.unit;
+      el.title = present ? '' : 'Canal absent de la carte';
+    }
+
+    // Mélange
+    const lam = s.afrMode === 'lambda';
+    const st = s.stoich || 14.7;
+    const conv = x => x == null ? null : (lam ? x / st : x);
+    const a = conv(V.afr), tg = conv(V.afrTgt);
+    $('afrLbl').textContent = lam ? 'Mélange · Lambda' : 'Mélange · AFR';
+    $('afrVal').textContent = fmt(a, lam ? 2 : 1);
+    $('afrTgt').textContent = fmt(tg, lam ? 2 : 1);
+    $('afrDev').textContent = (a != null && tg != null) ? fmt(a - tg, lam ? 2 : 1, true) : '—';
+    let state = 'na';
+    const running = rpm > 300;
+    if (V.afr != null && running) {
+      if (V.afrTgt != null) {
+        const d = Math.abs(V.afr - V.afrTgt);
+        state = d < 0.5 ? 'ok' : d < 1.2 ? 'warn' : 'crit';
+      } else state = (V.afr < 10.8 || V.afr > 16.8) ? 'crit' : (V.afr < 11.5 || V.afr > 15.6) ? 'warn' : 'ok';
+    }
+    $('afrPanel').dataset.state = state;
+    S.afrState = state;
+    const R = lam ? LAMBDA_RANGE : AFR_RANGE;
+    const pct = x => Math.max(0, Math.min(100, (x - R[0]) / (R[1] - R[0]) * 100));
+    if (a != null) $('afrMk').style.left = pct(a) + '%';
+    const tm = $('afrTgtMk');
+    tm.hidden = tg == null;
+    if (tg != null) tm.style.left = pct(tg) + '%';
+
+    // Indicateurs
+    const F = S.flags;
+    document.querySelectorAll('.flag').forEach(el => {
+      const f = el.dataset.f;
+      const on = f === 'accel' ? !!(F.tae || F.mae) : !!F[f];
+      el.classList.toggle('on', on);
+    });
+
+    if (S.log) logRow();
+    updateDiag();
+    needRound = true;
+  }
+  function buildTicks() {
+    const lam = S.set.afrMode === 'lambda';
+    const R = lam ? LAMBDA_RANGE : AFR_RANGE;
+    const marks = lam ? [0.7, 0.85, 1.0, 1.15, 1.3] : [10, 12, 14, 16, 18, 20];
+    $('afrTicks').innerHTML = marks.map(m =>
+      '<span style="left:' + ((m - R[0]) / (R[1] - R[0]) * 100).toFixed(2) + '%">' + (lam ? m.toFixed(2) : m) + '</span>').join('');
+  }
+
+  // ---------- Compte-tours (canvas) ----------
+  const css = (() => { let cache = null; return n => { if (!cache) cache = getComputedStyle(document.documentElement); return cache.getPropertyValue(n).trim(); }; })();
+  let dispRpm = 0, lastDrawn = -1, needDraw = true, needRound = true, lastRound = -1;
+  function drawTach(rpm, peak) {
+    const cv = $('tach');
+    const box = cv.parentElement.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const W = Math.max(1, Math.round(box.width)), H = Math.max(1, Math.round(box.height));
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const x = cv.getContext('2d');
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.clearRect(0, 0, W, H);
+    const max = Math.max(1000, S.set.rpmMax), red = Math.min(S.set.redline, max);
+    const r = Math.max(40, Math.min(W / 2 - 4, (H - 6) / 1.72));
+    const cx = W / 2, cy = (H - 1.707 * r) / 2 + r;
+    const a0 = Math.PI * 0.75, sweep = Math.PI * 1.5;
+    const ang = v => a0 + sweep * Math.max(0, Math.min(1, v / max));
+    const th = Math.max(9, r * 0.09);
+    const rb = r - th / 2;
+
+    x.lineCap = 'butt';
+    x.lineWidth = th;
+    x.strokeStyle = css('--track');
+    x.beginPath(); x.arc(cx, cy, rb, a0, ang(red)); x.stroke();
+    x.strokeStyle = css('--crit-dim');
+    x.beginPath(); x.arc(cx, cy, rb, ang(red), a0 + sweep); x.stroke();
+
+    if (rpm > 0) {
+      x.strokeStyle = css('--amber');
+      x.beginPath(); x.arc(cx, cy, rb, a0, ang(Math.min(rpm, red))); x.stroke();
+      if (rpm > red) {
+        x.strokeStyle = css('--crit');
+        x.beginPath(); x.arc(cx, cy, rb, ang(red), ang(rpm)); x.stroke();
+      }
+    }
+
+    const major = max > 12000 ? 2000 : 1000, minor = major / 2;
+    const ri = r - th - Math.max(4, r * 0.03);
+    x.lineCap = 'round';
+    for (let v = 0; v <= max + 1; v += minor) {
+      const isMaj = v % major === 0;
+      const A = ang(v), len = isMaj ? r * 0.1 : r * 0.05;
+      x.strokeStyle = v >= red ? css('--crit') : (isMaj ? css('--fg') : css('--dim-2'));
+      x.lineWidth = isMaj ? Math.max(2, r * 0.016) : Math.max(1, r * 0.009);
+      x.beginPath();
+      x.moveTo(cx + Math.cos(A) * ri, cy + Math.sin(A) * ri);
+      x.lineTo(cx + Math.cos(A) * (ri - len), cy + Math.sin(A) * (ri - len));
+      x.stroke();
+      if (isMaj) {
+        const rl = ri - len - r * 0.1;
+        x.fillStyle = v >= red ? css('--crit') : css('--dim');
+        x.font = '700 ' + Math.max(10, Math.round(r * 0.105)) + 'px ' + css('--f-num');
+        x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillText(String(v / 1000), cx + Math.cos(A) * rl, cy + Math.sin(A) * rl);
+      }
+    }
+    if (peak > 50) {
+      const A = ang(peak);
+      x.strokeStyle = css('--fg');
+      x.lineWidth = 3; x.lineCap = 'butt';
+      x.beginPath();
+      x.moveTo(cx + Math.cos(A) * (r + 1), cy + Math.sin(A) * (r + 1));
+      x.lineTo(cx + Math.cos(A) * (r - th - 2), cy + Math.sin(A) * (r - th - 2));
+      x.stroke();
+    }
+    x.fillStyle = css('--dim-2');
+    x.font = '400 ' + Math.max(9, Math.round(r * 0.07)) + 'px ' + css('--f-ui');
+    x.textAlign = 'center';
+    x.fillText('× 1000', cx, cy + r * 0.42);
+  }
+  const shiftEl = $('shift');
+  shiftEl.innerHTML = '<i></i>'.repeat(10);
+  const leds = [...shiftEl.children];
+  let lastShift = -2;
+  function updateShift(rpm) {
+    const red = S.set.redline, start = red - Math.min(1500, red * 0.25);
+    const over = rpm >= red;
+    const n = over ? 10 : Math.max(0, Math.min(10, Math.floor((rpm - start) / (red - start) * 10)));
+    const key = over ? 99 : n;
+    if (key === lastShift) return;
+    lastShift = key;
+    leds.forEach((el, i) => {
+      el.className = over ? 'r' : i < n ? (i < 4 ? 'g' : i < 7 ? 'a' : 'r') : '';
+    });
+    shiftEl.classList.toggle('flash', over);
+  }
+  function frame() {
+    const target = S.view.rpm || 0;
+    if (reduced) dispRpm = target;
+    else { dispRpm += (target - dispRpm) * 0.32; if (Math.abs(target - dispRpm) < 2) dispRpm = target; }
+    if (S.viewMode === 'round') {
+      const flashing = !reduced && dispRpm >= S.set.redline;
+      if (needRound || flashing || Math.abs(dispRpm - lastRound) >= 2) { drawRound(); lastRound = dispRpm; needRound = false; }
+    } else {
+      if (needDraw || Math.abs(dispRpm - lastDrawn) >= 2) { drawTach(dispRpm, S.peak); lastDrawn = dispRpm; needDraw = false; }
+      updateShift(dispRpm);
+    }
+    requestAnimationFrame(frame);
+  }
+  // ---------- Cadran rond multifonction ----------
+  // Anneau RPM segmenté sur 270°, vitesse au centre, mini-arcs liquide et AFR dans l'ouverture du bas,
+  // fenêtre à 4 pages (touche le cadran pour changer). Formes simples : arcs, segments, texte.
+  const PAGES = [
+    [['clt', 'LIQUIDE'], ['batt', 'BATT.'], ['afr', 'MÉLANGE']],
+    [['tps', 'PAPILLON'], ['map', 'MAP'], ['adv', 'AVANCE']],
+    [['iat', 'AIR ADM.'], ['pw', 'INJ. PW'], ['ego', 'CORR. O2']],
+    [['trip', 'TRAJET'], ['vmax', 'V. MAX'], ['rmax', 'RPM MAX']]
+  ];
+  let page = Math.min(PAGES.length - 1, Math.max(0, Number(load('msdash.page', 0)) | 0));
+  function tripKm() {
+    const fresh = G.speed != null && performance.now() - G.t < 4000;
+    return S.source === 'demo' && !fresh ? sim.trip : S.trip;
+  }
+  function field(key) {
+    const V = S.view, s = S.set, mph = s.spdUnit === 'mph', tu = '°' + s.tempUnit, has = k => !!S.res[k];
+    switch (key) {
+      case 'clt': return { u: tu, v: has('clt') ? fmt(V.clt, 0) : '—', st: has('clt') ? tileState('clt', V.clt) : 'na' };
+      case 'iat': return { u: tu, v: has('iat') ? fmt(V.iat, 0) : '—', st: has('iat') ? tileState('iat', V.iat) : 'na' };
+      case 'batt': return { u: 'V', v: has('batt') ? fmt(V.batt, 1) : '—', st: has('batt') ? tileState('batt', V.batt) : 'na' };
+      case 'afr': {
+        const lam = s.afrMode === 'lambda', a = V.afr == null ? null : (lam ? V.afr / (s.stoich || 14.7) : V.afr);
+        return { u: lam ? 'λ' : 'AFR', v: fmt(a, lam ? 2 : 1), st: S.afrState || 'na' };
+      }
+      case 'tps': return { u: '%', v: has('tps') ? fmt(V.tps, 0) : '—', st: 'ok' };
+      case 'map': return { u: 'kPa', v: has('map') ? fmt(V.map, 0) : '—', st: 'ok' };
+      case 'adv': return { u: '°', v: has('adv') ? fmt(V.adv, 1) : '—', st: 'ok' };
+      case 'pw': return { u: 'ms', v: has('pw') ? fmt(V.pw, 2) : '—', st: 'ok' };
+      case 'ego': return { u: '%', v: has('ego') ? fmt(V.ego, 0, true) : '—', st: has('ego') ? tileState('ego', V.ego) : 'na' };
+      case 'trip': return { u: mph ? 'mi' : 'km', v: fmt(tripKm() * (mph ? 0.621371 : 1), 1), st: 'ok' };
+      case 'vmax': return { u: mph ? 'mph' : 'km/h', v: String(Math.round(S.peakSpd * (mph ? 0.621371 : 1))), st: 'ok' };
+      case 'rmax': return { u: 'tr/min', v: (Math.round(S.peak / 10) * 10).toLocaleString('fr-CA'), st: 'ok' };
+    }
+    return { u: '', v: '—', st: 'na' };
+  }
+  function chipsNow() {
+    const V = S.view, F = S.flags || {}, out = [], cs = $('connPill').dataset.s;
+    if (S.res.clt && V.clt != null && tileState('clt', V.clt) === 'crit') out.push(['SURCHAUFFE', 'crit']);
+    if (S.res.batt && V.batt != null && tileState('batt', V.batt) === 'crit') out.push(['BATTERIE', 'crit']);
+    if (S.source === 'demo') out.push(['DÉMO', 'amber']);
+    else if (cs === 'connecting') out.push(['ECU…', 'warn']);
+    else if (!S.ecu || cs === 'warn') out.push(['ECU ✕', 'crit']);
+    if (F.crank) out.push(['DÉMARREUR', 'warn']);
+    if (F.tae || F.mae) out.push(['ACCÉL.', 'amber']);
+    if (F.warm) out.push(['RÉCHAUF.', 'amber']);
+    if (F.ase) out.push(['POST-DÉM.', 'amber']);
+    return out.slice(0, 3);
+  }
+  function drawRound() {
+    const d = S.dialD;
+    if (!d) return;
+    const cv = $('dial');
+    const dpr = Math.min(window.devicePixelRatio || 1, 3), px = Math.round(d * dpr);
+    if (cv.width !== px || cv.height !== px) { cv.width = px; cv.height = px; }
+    const x = cv.getContext('2d');
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.clearRect(0, 0, d, d);
+    const R = d / 2, c = R, D = Math.PI / 180;
+    const NUM = css('--f-num'), UI = css('--f-ui');
+    const V = S.view, s = S.set;
+    const P = (a, r) => [c + Math.cos(a) * r, c + Math.sin(a) * r];
+    const hasLS = 'letterSpacing' in x;
+    function txt(t, X, Y, size, color, o) {
+      o = o || {};
+      let sz = Math.max(7, size);
+      const setF = () => { x.font = (o.w || 400) + ' ' + sz.toFixed(1) + 'px ' + (o.f || NUM); };
+      setF();
+      if (hasLS) x.letterSpacing = (o.ls || 0) + 'px';
+      if (o.max) { const w = x.measureText(t).width; if (w > o.max) { sz = Math.max(7, sz * o.max / w); setF(); } }
+      x.fillStyle = color; x.textAlign = o.a || 'center'; x.textBaseline = 'middle';
+      x.fillText(t, X, Y);
+      if (hasLS) x.letterSpacing = '0px';
+    }
+    function tick(a, r1, r2, color, w) {
+      const [x1, y1] = P(a, r1), [x2, y2] = P(a, r2);
+      x.strokeStyle = color; x.lineWidth = w; x.lineCap = 'butt';
+      x.beginPath(); x.moveTo(x1, y1); x.lineTo(x2, y2); x.stroke();
+    }
+
+    // Fond du cadran
+    x.fillStyle = css('--panel');
+    x.beginPath(); x.arc(c, c, R - 1, 0, Math.PI * 2); x.fill();
+    x.lineWidth = Math.max(1, R * 0.01); x.strokeStyle = css('--line'); x.stroke();
+
+    // Anneau RPM segmenté : 135° → 405°, ouvert en bas
+    const max = Math.max(1000, s.rpmMax), red = Math.min(s.redline, max), rpm = dispRpm;
+    const a0 = 135 * D, sw = 270 * D, ang = v => a0 + sw * Math.max(0, Math.min(1, v / max));
+    const rO = R * 0.955, th = R * 0.1, rm = rO - th / 2;
+    const step = max <= 10000 ? 250 : 500, n = Math.round(max / step), gap = 1.2 * D;
+    const over = rpm >= red;
+    const blinkOff = over && !reduced && Math.floor(performance.now() / 120) % 2 === 1;
+    x.lineWidth = th; x.lineCap = 'butt';
+    for (let i = 0; i < n; i++) {
+      const v0 = i * step, v1 = v0 + step, inRed = v1 > red, lit = rpm >= v0 + step * 0.2;
+      x.strokeStyle = lit
+        ? (over ? (blinkOff ? css('--crit-dim') : css('--crit')) : inRed ? css('--crit') : css('--amber'))
+        : (inRed ? css('--crit-dim') : css('--track'));
+      x.beginPath(); x.arc(c, c, rm, ang(v0) + gap / 2, ang(v1) - gap / 2); x.stroke();
+    }
+    if (S.peak > 50) tick(ang(S.peak), rO + R * 0.012, rO - th - R * 0.015, css('--fg'), Math.max(2, R * 0.012));
+    const major = max > 12000 ? 2000 : 1000, rn = rO - th - R * 0.075;
+    for (let v = 0; v <= max + 1; v += major) {
+      const [X, Y] = P(ang(v), rn);
+      txt(String(v / 1000), X, Y, R * 0.085, v >= red ? css('--crit') : css('--dim'), { w: 700 });
+    }
+
+    // Mini-arcs dans l'ouverture du bas
+    const rs = rO - R * 0.035, ths = R * 0.055;
+    // Liquide : 129° (froid) → 98° (chaud)
+    const cA = 129 * D, cB = 98 * D, lo = 40, hi = s.cltAlarmC + 10;
+    x.lineWidth = ths; x.strokeStyle = css('--track');
+    x.beginPath(); x.arc(c, c, rs, cB, cA); x.stroke();
+    if (S.res.clt && V.clt != null) {
+      const cC = s.tempUnit === 'C' ? V.clt : (V.clt - 32) * 5 / 9;
+      const f = Math.max(0.03, Math.min(1, (cC - lo) / (hi - lo)));
+      const st = tileState('clt', V.clt);
+      x.strokeStyle = st === 'crit' ? css('--crit') : st === 'warn' ? css('--warn') : st === 'cold' ? css('--cool') : css('--ok');
+      x.lineWidth = ths;
+      x.beginPath(); x.arc(c, c, rs, cA - f * (cA - cB), cA); x.stroke();
+    }
+    tick(cA - (s.cltAlarmC - lo) / (hi - lo) * (cA - cB), rs + ths / 2 + R * 0.012, rs - ths / 2 - R * 0.012, css('--crit'), Math.max(1.5, R * 0.01));
+    // AFR : 83° (riche, 10) → 52° (pauvre, 20)
+    const fA = 83 * D, fB = 52 * D, afrAng = v => fA - Math.max(0, Math.min(1, (v - 10) / 10)) * (fA - fB);
+    x.lineWidth = ths; x.strokeStyle = css('--track');
+    x.beginPath(); x.arc(c, c, rs, fB, fA); x.stroke();
+    x.globalAlpha = 0.5;
+    for (const [z0, z1, col] of [[10, 11.5, '--cool'], [11.5, 15, '--ok'], [15, 16.5, '--warn'], [16.5, 20, '--crit']]) {
+      x.strokeStyle = css(col); x.beginPath(); x.arc(c, c, rs, afrAng(z1), afrAng(z0)); x.stroke();
+    }
+    x.globalAlpha = 1;
+    if (V.afrTgt != null) tick(afrAng(V.afrTgt), rs + ths / 2 + R * 0.01, rs - ths / 2 - R * 0.01, css('--amber'), Math.max(1.5, R * 0.01));
+    if (V.afr != null && (V.rpm || 0) > 300) tick(afrAng(V.afr), rs + ths / 2 + R * 0.02, rs - ths / 2 - R * 0.02, css('--fg'), Math.max(2.5, R * 0.017));
+
+    // RPM numérique
+    txt((Math.round((V.rpm || 0) / 10) * 10).toLocaleString('fr-CA'), c, c - R * 0.5, R * 0.13, over ? css('--crit') : css('--amber'), { w: 700 });
+    txt('TR/MIN', c, c - R * 0.395, R * 0.046, css('--dim'), { f: UI, ls: R * 0.008 });
+    // Vitesse
+    txt(V.speed == null ? '—' : String(Math.round(V.speed)), c, c - R * 0.08, R * 0.42, css('--fg'), { w: 700, max: R * 0.95 });
+    txt((s.spdUnit === 'mph' ? 'MPH' : 'KM/H') + (S.speedSrc ? '  ·  ' + S.speedSrc : ''), c, c + R * 0.145, R * 0.052, css('--dim'), { f: UI, ls: R * 0.005 });
+
+    // Fenêtre multifonction
+    const cols = [-0.37, 0, 0.37];
+    PAGES[page].forEach(([key, label], i) => {
+      const f = field(key), X = c + cols[i] * R;
+      const col = f.st === 'crit' ? css('--crit') : f.st === 'warn' ? css('--warn') : f.st === 'cold' ? css('--cool')
+        : f.st === 'na' ? css('--dim-2') : key === 'afr' ? css('--ok') : css('--fg');
+      txt(label + (key === 'rmax' ? '' : ' ' + f.u), X, c + R * 0.29, R * 0.044, css('--dim'), { f: UI, ls: R * 0.004, max: R * 0.33 });
+      txt(f.v, X, c + R * 0.395, R * 0.11, col, { w: 700, max: R * 0.33 });
+    });
+
+    // Alertes et témoins
+    const ch = chipsNow();
+    if (ch.length) {
+      const fs = R * 0.044, padX = R * 0.032, h = R * 0.085, gapC = R * 0.025, Y = c + R * 0.645;
+      x.font = '700 ' + fs.toFixed(1) + 'px ' + UI;
+      const ws = ch.map(([t]) => x.measureText(t).width + padX * 2);
+      const total = ws.reduce((a, b) => a + b, 0) + gapC * (ch.length - 1);
+      const k = Math.min(1, R * 1.0 / total);
+      let X = c - total * k / 2;
+      ch.forEach(([t, kind], i) => {
+        const w = ws[i] * k, col = kind === 'crit' ? css('--crit') : kind === 'warn' ? css('--warn') : css('--amber');
+        x.fillStyle = kind === 'crit' ? css('--crit-bg') : css('--amber-glow');
+        x.strokeStyle = col; x.lineWidth = Math.max(1, R * 0.007);
+        x.beginPath();
+        if (x.roundRect) x.roundRect(X, Y - h / 2, w, h, h * 0.22); else x.rect(X, Y - h / 2, w, h);
+        x.fill(); x.stroke();
+        txt(t, X + w / 2, Y, fs * k, col, { f: UI, w: 700 });
+        X += w + gapC * k;
+      });
+    }
+
+    // Pages et légendes des mini-arcs
+    const yb = c + R * 0.82;
+    for (let i = 0; i < PAGES.length; i++) {
+      x.fillStyle = i === page ? css('--fg') : css('--dim-2');
+      x.beginPath(); x.arc(c + (i - (PAGES.length - 1) / 2) * R * 0.05, yb, R * 0.0135, 0, Math.PI * 2); x.fill();
+    }
+    txt('°' + s.tempUnit, c - R * 0.2, yb, R * 0.046, css('--dim'), { f: UI });
+    txt(s.afrMode === 'lambda' ? 'λ' : 'AFR', c + R * 0.2, yb, R * 0.046, css('--dim'), { f: UI });
+  }
+  function sizeDial() {
+    const box = $('round').getBoundingClientRect();
+    const dd = Math.floor(Math.min(box.width, box.height));
+    if (dd > 0 && dd !== S.dialD) { S.dialD = dd; $('dial').style.width = $('dial').style.height = dd + 'px'; }
+    needRound = true;
+  }
+  const ICON_ROUND = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7.5 16.5A6 6 0 1 1 16.5 16.5"/></svg>';
+  const ICON_GRID = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>';
+  function setView(v) {
+    S.viewMode = v === 'cluster' ? 'cluster' : 'round';
+    const round = S.viewMode === 'round';
+    $('cluster').hidden = round;
+    $('round').hidden = !round;
+    document.body.classList.toggle('v-round', round);
+    const b = $('btnView');
+    b.innerHTML = round ? ICON_GRID : ICON_ROUND;
+    b.setAttribute('aria-label', round ? 'Vue grappe' : 'Vue ronde');
+    b.title = round ? 'Vue grappe' : 'Vue ronde';
+    save('msdash.view', S.viewMode);
+    needDraw = true; lastShift = -2; S.dirty = true;
+    if (round) requestAnimationFrame(sizeDial);
+  }
+  function nextPage() { page = (page + 1) % PAGES.length; save('msdash.page', page); needRound = true; }
+
+
+  // ---------- État de la connexion ----------
+  function setConn(state, text) {
+    const p = $('connPill');
+    p.dataset.s = state;
+    $('connText').textContent = text;
+    const connected = !!S.ecu || state === 'connecting';
+    $('btnConnectText').textContent = connected ? 'Déconnecter' : 'Connecter';
+    $('btnConnect').classList.toggle('primary', !connected);
+    $('btnDemo').hidden = S.source === 'demo';
+    $('simTag').hidden = S.source !== 'demo';
+    $('cluster').classList.toggle('stale', S.source === 'idle');
+  }
+  function notice(text, kind) {
+    $('noticeText').textContent = text;
+    $('notice').dataset.kind = kind || 'warn';
+    $('notice').hidden = false;
+  }
+  const hideNotice = () => { $('notice').hidden = true; };
+  function updateDiag() {
+    const parts = [];
+    if (S.source === 'demo') parts.push('Source <b>démo</b>');
+    else if (S.ecu) {
+      parts.push('Protocole <b>' + (S.ecu.mode === 'env' ? 'CRC32' : 'série simple') + '</b>');
+      parts.push('<b>' + S.hz.toFixed(1) + '</b> lectures/s');
+      parts.push('Erreurs <b>' + S.errs + '</b>');
+    } else parts.push('Source <b>aucune</b>');
+    if (S.signature) parts.push('ECU <b>' + esc(S.signature) + '</b>');
+    parts.push('Carte <b>' + esc(S.map.source === 'ini' ? S.map.name : 'motoEFI intégrée') + '</b>');
+    $('diag').innerHTML = parts.map(p => '<span>' + p + '</span>').join('');
+  }
+
+  // ---------- Connexion Bluetooth / série ----------
+  function serialProblem() {
+    if (asFile) return FILE_MSG;
+    if (!('serial' in navigator)) {
+      return inFrame
+        ? "Le port série n'est pas accessible dans cet aperçu. Ouvre la version hébergée de l'app dans Chrome sur Android."
+        : "Ce navigateur n'a pas accès au Bluetooth série. Ouvre l'app dans Chrome sur Android (version récente), à partir d'une adresse https.";
+    }
+    try {
+      if (document.featurePolicy && !document.featurePolicy.allowsFeature('serial'))
+        return "Le port série est bloqué dans cet aperçu. Ouvre la version hébergée de l'app dans Chrome sur Android.";
+    } catch (_) { /* API absente */ }
+    return null;
+  }
+  async function connectClicked() {
+    if (S.ecu || $('connPill').dataset.s === 'connecting') return disconnect();
+    const problem = serialProblem();
+    if (problem) return notice(problem, 'crit');
+    let port;
+    try {
+      port = await navigator.serial.requestPort({ allowedBluetoothServiceClassIds: [SPP] });
+    } catch (e) {
+      if (e && e.name === 'NotFoundError') return;              // choix annulé
+      if (e && e.name === 'SecurityError') return notice("Le port série est bloqué ici. Ouvre la version hébergée de l'app dans Chrome sur Android.", 'crit');
+      return notice('Connexion impossible : ' + (e && e.message ? e.message : e), 'crit');
+    }
+    S.port = port;
+    S.userClosed = false;
+    await openPort(false);
+  }
+  async function openPort(silent) {
+    clearTimeout(S.rt);
+    stopDemo();
+    S.source = 'idle';
+    setConn('connecting', S.everConnected ? 'Reconnexion…' : 'Connexion…');
+    const ecu = new C.Ecu(S.port, { baud: S.set.baud });
+    try {
+      await ecu.open();
+    } catch (e) {
+      return failOpen(silent, "Impossible d'ouvrir la clé Bluetooth. Vérifie qu'elle est jumelée et alimentée, et que TunerStudio est fermé sur le laptop.");
+    }
+    if (S.userClosed) { await ecu.close(); return; }
+    ecu.blockSize = S.map.blockSize || 0;
+    try {
+      await ecu.detect(S.set.proto, S.map);
+    } catch (e) {
+      await ecu.close();
+      if (S.userClosed) return;
+      return failOpen(silent, "La clé est connectée, mais le MicroSquirt ne répond pas. Vérifie qu'il est sous tension (clé de contact) et essaie un autre protocole dans les réglages.");
+    }
+    if (S.userClosed) { await ecu.close(); return; }
+    S.ecu = ecu;
+    S.everConnected = true;
+    S.signature = ecu.signature;
+    S.errs = 0;
+    ecu.onclose = byUser => {
+      if (S.ecu !== ecu) return;
+      S.ecu = null;
+      if (!byUser && !S.userClosed) {
+        S.source = 'idle';
+        ecu.close().finally(scheduleReconnect);
+      }
+    };
+    hideNotice();
+    checkSignature();
+    S.source = 'ecu';
+    S.peak = 0;
+    setConn('on', 'Connecté');
+    keepAwake(true);
+    pollLoop(ecu);
+  }
+  function failOpen(silent, msg) {
+    S.source = 'idle';
+    setConn('off', 'Déconnecté');
+    if (S.everConnected && !S.userClosed) return scheduleReconnect();
+    if (silent) { notice("MicroSquirt introuvable pour l'instant. Mode démo en attendant ; touche Connecter quand le contact est mis.", 'info'); startDemo(); return; }
+    notice(msg, 'crit');
+  }
+  function scheduleReconnect() {
+    clearTimeout(S.rt);
+    if (S.userClosed || !S.port) return;
+    setConn('connecting', 'Reconnexion…');
+    S.rt = setTimeout(() => { if (!S.userClosed && !S.ecu) openPort(false); }, 3000);
+  }
+  async function disconnect() {
+    S.userClosed = true;
+    clearTimeout(S.rt);
+    const e = S.ecu;
+    S.ecu = null;
+    if (e) await e.close();
+    S.source = 'idle';
+    setConn('off', 'Déconnecté');
+    keepAwake(false);
+  }
+  async function pollLoop(ecu) {
+    let fails = 0, frames = 0, t = performance.now();
+    while (S.ecu === ecu && ecu.alive) {
+      const t0 = performance.now();
+      try {
+        const data = await ecu.realtime(S.reqSize, S.map);
+        ingest(data);
+        frames++;
+        if (fails >= 3) setConn('on', 'Connecté');
+        fails = 0;
+      } catch (e) {
+        if (!ecu.alive || S.ecu !== ecu) break;
+        fails++; S.errs++;
+        if (fails === 3) setConn('warn', 'Pas de réponse');
+        await ecu.drain(120);
+      }
+      const n = performance.now();
+      if (n - t >= 1000) { S.hz = frames * 1000 / (n - t); frames = 0; t = n; if (fails < 3) setConn('on', Math.round(S.hz) + ' Hz'); S.dirty = true; }
+      const dt = performance.now() - t0;
+      if (dt < 60) await C.sleep(60 - dt);
+    }
+  }
+  function ingest(bytes) {
+    S.vals = C.decode(S.map, bytes, S.need);
+    const F = {};
+    for (const k in BIT_ALIASES) {
+      if (S.resBits[k]) F[k] = !!C.bitValue(S.map, bytes, S.resBits[k]);
+      else if (S.engineCh && S.vals[S.engineCh] != null) F[k] = !!((S.vals[S.engineCh] >> ENGINE_BIT[k]) & 1);
+      else F[k] = false;
+    }
+    S.flags = F;
+    S.lastData = performance.now();
+    S.dirty = true;
+  }
+  function checkSignature() {
+    const a = (S.map.signature || '').trim(), b = (S.signature || '').trim();
+    if (S.map.source === 'ini' && a && b && a !== b)
+      notice('Le .ini chargé (' + a + ') ne correspond pas au firmware du MicroSquirt (' + b + '). Les valeurs risquent d\'être fausses : charge le .ini de ce projet.', 'warn');
+  }
+
+  // ---------- Mode démo ----------
+  const sim = { t: 0, rpm: 0, tps: 0, clt: 24, speed: 0, trip: 0, last: 0, tpsPrev: 0, timer: null };
+  function startDemo() {
+    if (S.ecu) return;
+    S.source = 'demo';
+    sim.t = 0; sim.rpm = 0; sim.tps = 0; sim.clt = 24; sim.speed = 0; sim.trip = 0; sim.last = performance.now();
+    S.peak = 0; S.peakSpd = 0;
+    clearInterval(sim.timer);
+    sim.timer = setInterval(simStep, 50);
+    setConn('demo', 'Démo');
+    keepAwake(true);
+  }
+  function stopDemo() { clearInterval(sim.timer); sim.timer = null; }
+  function simStep() {
+    const n = performance.now(), dt = Math.min(0.2, (n - sim.last) / 1000);
+    sim.last = n; sim.t += dt;
+    const red = S.set.redline, T = sim.t, c = T % 16;
+    const noise = a => (Math.random() - 0.5) * a;
+    let tpsT;
+    if (T < 1.2) tpsT = 0;
+    else if (c < 3) tpsT = 0;
+    else if (c < 5.6) tpsT = 88;
+    else if (c < 6.6) tpsT = 0;
+    else if (c < 11) tpsT = 24 + 7 * Math.sin(T * 1.3);
+    else if (c < 12.6) tpsT = 62;
+    else tpsT = 0;
+    sim.tpsPrev = sim.tps;
+    sim.tps += (tpsT - sim.tps) * Math.min(1, dt * 7);
+    const cranking = T < 1.2;
+    const rpmT = cranking ? 230 : Math.min(S.set.rpmMax, 950 + (sim.tps / 85) * (red + 180 - 950));
+    const k = rpmT > sim.rpm ? 1.7 : 2.6;
+    sim.rpm += (rpmT - sim.rpm) * Math.min(1, dt * k) + (cranking ? 0 : noise(18));
+    sim.clt += (88 - sim.clt) * dt * 0.025;
+    const vT = cranking ? 0 : Math.max(0, (sim.tps - 3) / 85) * 115;
+    sim.speed += (vT - sim.speed) * Math.min(1, dt * (vT > sim.speed ? 0.45 : 0.6));
+    sim.trip += sim.speed * dt / 3600;
+    const map = cranking ? 92 : 31 + sim.tps * 0.72 + noise(1.2);
+    const tgt = map > 80 ? 12.8 : map > 58 ? 13.6 : 14.7;
+    const tipIn = (sim.tps - sim.tpsPrev) / dt > 40;
+    const afr = cranking ? 0 : tgt + 0.3 * Math.sin(T * 2.3) + noise(0.15) - (tipIn ? 1.1 : 0);
+    const adv = cranking ? 10 : Math.max(8, Math.min(36, 12 + (sim.rpm - 950) / red * 22 - (map - 30) * 0.07));
+    const pw = cranking ? 9 : 1.4 + map * 0.072;
+    const batt = cranking ? 10.6 + noise(0.3) : sim.rpm < 1200 ? 13.7 + noise(0.05) : 14.1 + 0.08 * Math.sin(T * 0.7);
+    const cToNative = (name, cel) => isFahrenheit(name) ? cel * 9 / 5 + 32 : cel;
+    const r = S.res, vals = {};
+    const put = (key, v) => { if (r[key]) vals[r[key]] = v; };
+    put('rpm', Math.max(0, sim.rpm)); put('map', map); put('tps', sim.tps); put('afr', afr); put('afrTgt', tgt);
+    put('adv', adv); put('pw', pw); put('batt', batt); put('ego', 100 + (tgt - afr) * 2.2);
+    if (r.clt) vals[r.clt] = cToNative(r.clt, sim.clt);
+    if (r.iat) vals[r.iat] = cToNative(r.iat, 23 + Math.min(12, sim.t * 0.05) + noise(0.3));
+    const flags = { run: !cranking, crank: cranking, ase: T > 1.2 && T < 14, warm: sim.clt < 70, tae: tipIn, mae: false };
+    const bits = {};
+    let engine = 0;
+    for (const f in flags) {
+      if (S.resBits[f]) bits[S.resBits[f]] = flags[f];
+      if (flags[f]) engine |= 1 << ENGINE_BIT[f];
+    }
+    if (S.engineCh) vals[S.engineCh] = engine;
+    ingest(C.encode(S.map, vals, bits, S.reqSize));
+  }
+
+  // ---------- Log CSV ----------
+  const LOG_COLS = [['speed', 'Vitesse', 1], ['rpm', 'RPM', 0], ['map', 'MAP kPa', 1], ['tps', 'TPS %', 1], ['afr', 'AFR', 2], ['afrTgt', 'AFR cible', 1],
+    ['clt', 'CLT', 1], ['iat', 'IAT', 1], ['adv', 'Avance deg', 1], ['pw', 'PW ms', 3], ['ego', 'Corr O2 %', 1], ['batt', 'Batterie V', 2]];
+  function logRow() {
+    const L = S.log;
+    const t = (performance.now() - L.t0) / 1000;
+    L.rows.push([t.toFixed(2)].concat(LOG_COLS.map(([k, , d]) => S.view[k] == null ? '' : S.view[k].toFixed(d))).join(','));
+    const s = Math.floor(t);
+    $('btnLogText').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }
+  function toggleLog() {
+    const btn = $('btnLog'), dot = btn.querySelector('.dot');
+    if (!S.log) {
+      S.log = { t0: performance.now(), rows: [], started: new Date(), src: S.source };
+      btn.classList.add('rec'); dot.hidden = false;
+      $('btnLogText').textContent = '00:00';
+      return;
+    }
+    const L = S.log; S.log = null;
+    btn.classList.remove('rec'); dot.hidden = true;
+    $('btnLogText').textContent = 'Log';
+    if (!L.rows.length) return;
+    const u = '°' + S.set.tempUnit;
+    const su = S.set.spdUnit === 'mph' ? 'mph' : 'km/h';
+    const head = ['Temps s'].concat(LOG_COLS.map(([k, h]) => (k === 'clt' || k === 'iat') ? h + ' ' + u : k === 'speed' ? h + ' ' + su : h)).join(',');
+    const blob = new Blob([head + '\n' + L.rows.join('\n') + '\n'], { type: 'text/csv' });
+    const d = L.started, p = n => String(n).padStart(2, '0');
+    const name = 'ms-log-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + (L.src === 'demo' ? '-demo' : '') + '.csv';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    notice('Log terminé : ' + L.rows.length + ' lignes dans ' + name + '.' + (inFrame ? " Si rien ne se télécharge, c'est l'aperçu qui bloque : la version hébergée le permet." : ''), 'info');
+  }
+
+  // ---------- Écran ----------
+  async function keepAwake(on) {
+    try {
+      if (on && !S.wake && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+        S.wake = await navigator.wakeLock.request('screen');
+        S.wake.addEventListener('release', () => { S.wake = null; });
+      } else if (!on && S.wake) { await S.wake.release(); S.wake = null; }
+    } catch (_) { S.wake = null; }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.source !== 'idle') keepAwake(true); });
+  async function fullscreen() {
+    try {
+      if (document.fullscreenElement) { await document.exitFullscreen(); return; }
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      try { await screen.orientation.lock('landscape'); } catch (_) { /* rotation libre */ }
+    } catch (_) {
+      notice("Le plein écran n'est pas permis ici. Dans Chrome, installe l'app (menu ⋮ › Installer l'application) pour l'avoir en plein écran.", 'info');
+    }
+  }
+
+  // ---------- Réglages ----------
+  function openDrawer(open) { $('drawer').hidden = !open; $('scrim').hidden = !open; if (open) $('btnClose').focus(); }
+  function fillSettings() {
+    const s = S.set;
+    $(s.tempUnit === 'F' ? 'tuF' : 'tuC').checked = true;
+    $(s.afrMode === 'lambda' ? 'amL' : 'amA').checked = true;
+    $(s.spdUnit === 'mph' ? 'suM' : 'suK').checked = true;
+    $('setRedline').value = s.redline;
+    $('setMax').value = s.rpmMax;
+    $('setCltLbl').textContent = 'Alarme liquide (°' + s.tempUnit + ')';
+    $('setClt').value = Math.round(cToUser(s.cltAlarmC));
+    $('setStoich').value = s.stoich;
+    const mi = s.spdUnit === 'mph';
+    $('tripInfo').textContent = (S.trip * (mi ? 0.621371 : 1)).toLocaleString('fr-CA', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + (mi ? ' mi' : ' km');
+    $('setProto').value = s.proto;
+    $('setBaud').value = String(s.baud);
+  }
+  function readSettings() {
+    const s = S.set;
+    s.tempUnit = $('tuF').checked ? 'F' : 'C';
+    s.afrMode = $('amL').checked ? 'lambda' : 'afr';
+    s.spdUnit = $('suM').checked ? 'mph' : 'kmh';
+    const n = (id, lo, hi, d) => { const v = Number($(id).value); return Number.isFinite(v) && v >= lo && v <= hi ? v : d; };
+    s.rpmMax = n('setMax', 2000, 20000, s.rpmMax);
+    s.redline = Math.min(n('setRedline', 1000, 20000, s.redline), s.rpmMax);
+    s.stoich = n('setStoich', 5, 20, s.stoich);
+    s.proto = $('setProto').value;
+    s.baud = Number($('setBaud').value) || 115200;
+    save('msdash.settings', s);
+    buildTicks(); needDraw = true; lastShift = -2; S.dirty = true;
+  }
+  function onSettingsChange(e) {
+    const id = e.target.id;
+    if (id === 'setClt') {
+      const v = Number($('setClt').value);
+      if (Number.isFinite(v)) S.set.cltAlarmC = S.set.tempUnit === 'C' ? v : (v - 32) * 5 / 9;
+    }
+    readSettings();
+    if (e.target.name === 'tempUnit') fillSettings();
+  }
+  function loadIniFile(file) {
+    if (!file) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      const m = C.parseIni(String(fr.result || ''));
+      const n = Object.keys(m.channels).length;
+      if (n < 5) { notice("Ce fichier ne contient pas de section [OutputChannels] lisible. Prends le mainController.ini du dossier projectCfg de ton projet TunerStudio.", 'crit'); return; }
+      m.name = file.name;
+      S.map = m;
+      save('msdash.map.v2', m);
+      applyMap();
+      if (!S.res.rpm) notice('Carte chargée, mais le canal rpm est introuvable. Envoie-moi ce .ini et j\'ajusterai les noms.', 'warn');
+      else { hideNotice(); checkSignature(); }
+      updateDiag();
+    };
+    fr.onerror = () => notice('Lecture du fichier impossible.', 'crit');
+    fr.readAsText(file, 'windows-1252');
+  }
+
+  // ---------- Démarrage ----------
+  $('btnConnect').addEventListener('click', connectClicked);
+  $('btnDemo').addEventListener('click', async () => { if (S.ecu) await disconnect(); S.userClosed = true; hideNotice(); startDemo(); });
+  $('btnLog').addEventListener('click', toggleLog);
+  $('btnSettings').addEventListener('click', () => { fillSettings(); openDrawer(true); });
+  $('btnClose').addEventListener('click', () => openDrawer(false));
+  $('scrim').addEventListener('click', () => openDrawer(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('drawer').hidden) openDrawer(false); });
+  $('btnFull').addEventListener('click', fullscreen);
+  $('noticeClose').addEventListener('click', hideNotice);
+  $('drawer').addEventListener('change', e => { if (e.target.id === 'iniFile') { loadIniFile(e.target.files[0]); e.target.value = ''; } else onSettingsChange(e); });
+  $('btnMapReset').addEventListener('click', () => { S.map = C.DEFAULT_MAP; save('msdash.map.v2', null); applyMap(); updateDiag(); });
+  $('rpmPeak').parentElement.style.pointerEvents = 'auto';
+  $('rpmPeak').parentElement.title = 'Touche pour remettre à zéro';
+  $('rpmPeak').parentElement.addEventListener('click', () => { S.peak = 0; S.peakSpd = 0; S.dirty = true; needDraw = true; });
+  $('gpsPill').addEventListener('click', () => { hideNotice(); gpsStart(true); });
+  $('btnView').addEventListener('click', () => setView(S.viewMode === 'round' ? 'cluster' : 'round'));
+  $('dial').addEventListener('click', nextPage);
+  $('dial').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nextPage(); } });
+  let tripArm = 0;
+  $('btnTrip').addEventListener('click', () => {
+    const b = $('btnTrip');
+    if (performance.now() - tripArm < 4000) {
+      S.trip = 0; save('msdash.trip', 0); tripArm = 0; b.textContent = 'Remettre à zéro'; fillSettings(); S.dirty = true;
+    } else {
+      tripArm = performance.now(); b.textContent = 'Confirmer la remise à zéro';
+      setTimeout(() => { if (performance.now() - tripArm >= 3900) b.textContent = 'Remettre à zéro'; }, 4000);
+    }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') save('msdash.trip', S.trip); });
+  if ('ResizeObserver' in window) new ResizeObserver(() => { if (S.viewMode === 'round') sizeDial(); }).observe($('round'));
+
+  if ('ResizeObserver' in window) new ResizeObserver(() => { needDraw = true; }).observe($('tach').parentElement);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { needDraw = true; });
+
+  applyMap();
+  buildTicks();
+  { const h = location.hash.slice(1); setView(h === 'rond' ? 'round' : h === 'grappe' ? 'cluster' : load('msdash.view', 'round')); }
+  startDemo();
+  setInterval(renderReadouts, 100);
+  setInterval(() => { renderGps(); if (G.state !== 'off') S.dirty = true; }, 1000);   // fait vieillir la vitesse sans nouvelle position
+  renderGps();
+  if (asFile && !inFrame) notice(FILE_MSG, 'warn');
+  else if (!inFrame) gpsStart(false);   // version installée : la permission est demandée la première fois
+  requestAnimationFrame(frame);
+
+  // Reconnexion automatique à la dernière clé utilisée (version hébergée seulement).
+  if (!serialProblem() && navigator.serial.getPorts) {
+    navigator.serial.getPorts().then(ports => {
+      if (ports && ports.length && !S.ecu) { S.port = ports[0]; S.userClosed = false; openPort(true); }
+    }).catch(() => { /* aperçu : pas d'accès */ });
+  }
+  // Hors ligne : service worker quand l'app est hébergée (pas dans l'aperçu).
+  if (!inFrame && 'serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* fichier absent : on continue en ligne */ });
+  }
+})();
+</script>
+</body>
+</html>

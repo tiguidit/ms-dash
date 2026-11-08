@@ -1,0 +1,33 @@
+DASH MICROSQUIRT - mise en ligne (5 minutes, sur le laptop)
+
+IMPORTANT : n'ouvre pas index.html directement depuis le téléphone
+(adresse content:// ou file://). Chrome bloque alors le GPS et le
+Bluetooth, sans aucun réglage pour les permettre. L'app doit avoir une
+adresse https. GitHub Pages est gratuit :
+
+1. github.com > New repository > nom : ms-dash > Public > Create.
+2. "uploading an existing file" > glisse les 5 fichiers de ce dossier
+   (index.html, sw.js, manifest.webmanifest, icon-192.png, icon-512.png) > Commit.
+3. Settings > Pages > Source : Deploy from a branch > main / (root) > Save.
+4. Une minute plus tard : https://<ton-usager>.github.io/ms-dash/
+
+Sur le téléphone Android :
+- Jumelle la clé Bluetooth dans Paramètres > Bluetooth (NIP 1234 ou 0000).
+- Ouvre l'adresse dans Chrome, menu (3 points) > Installer l'application.
+- L'app s'ouvre en plein écran, fonctionne sans réseau et se reconnecte
+  toute seule à la dernière clé utilisée.
+- Ferme TunerStudio sur le laptop : la clé n'accepte qu'un appareil à la fois.
+- Autorise la position quand Chrome la demande : c'est pour la vitesse GPS.
+  La pastille GPS en haut indique la précision (ex. GPS ±4 m).
+
+Vue ronde (bouton à côté de l'engrenage) :
+- Anneau RPM, vitesse GPS au centre, barres liquide et AFR en bas.
+- Touche le cadran pour changer la fenêtre du bas : moteur, charge,
+  injection, trajet. Les alertes (surchauffe, batterie, ECU) restent visibles.
+
+Réglages (engrenage) :
+- La carte de ton MicroSquirt motoEFI (MSII Rev 2.88, commande « a »,
+  bloc de 82 octets) est déjà intégrée : rien à charger.
+- Charge un autre .ini seulement si tu changes de firmware.
+- Zone rouge, échelle, alarme liquide, °C/°F, AFR/lambda, protocole.
+- Au premier essai, compare RPM et température avec TunerStudio.
