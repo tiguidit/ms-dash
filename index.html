@@ -421,29 +421,30 @@ body.v-round .diag{display:none}
   }
 
   const SIZES = { U08: 1, S08: 1, U16: 2, S16: 2, U32: 4, S32: 4, F32: 4 };
-  function readRaw(dv, type, off) {
+  // le = petit-boutiste (octet de poids faible en premier), selon « endianness » du .ini.
+  function readRaw(dv, type, off, le) {
     switch (type) {
       case 'U08': return dv.getUint8(off);
       case 'S08': return dv.getInt8(off);
-      case 'U16': return dv.getUint16(off);
-      case 'S16': return dv.getInt16(off);
-      case 'U32': return dv.getUint32(off);
-      case 'S32': return dv.getInt32(off);
-      case 'F32': return dv.getFloat32(off);
+      case 'U16': return dv.getUint16(off, le);
+      case 'S16': return dv.getInt16(off, le);
+      case 'U32': return dv.getUint32(off, le);
+      case 'S32': return dv.getInt32(off, le);
+      case 'F32': return dv.getFloat32(off, le);
     }
     return NaN;
   }
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-  function writeRaw(dv, type, off, v) {
+  function writeRaw(dv, type, off, v, le) {
     const r = Math.round(v);
     switch (type) {
       case 'U08': dv.setUint8(off, clamp(r, 0, 255)); break;
       case 'S08': dv.setInt8(off, clamp(r, -128, 127)); break;
-      case 'U16': dv.setUint16(off, clamp(r, 0, 65535)); break;
-      case 'S16': dv.setInt16(off, clamp(r, -32768, 32767)); break;
-      case 'U32': dv.setUint32(off, clamp(r, 0, 4294967295)); break;
-      case 'S32': dv.setInt32(off, clamp(r, -2147483648, 2147483647)); break;
-      case 'F32': dv.setFloat32(off, v); break;
+      case 'U16': dv.setUint16(off, clamp(r, 0, 65535), le); break;
+      case 'S16': dv.setInt16(off, clamp(r, -32768, 32767), le); break;
+      case 'U32': dv.setUint32(off, clamp(r, 0, 4294967295), le); break;
+      case 'S32': dv.setInt32(off, clamp(r, -2147483648, 2147483647), le); break;
+      case 'F32': dv.setFloat32(off, v, le); break;
     }
   }
   const ch = (type, offset, units, scale, translate) =>
@@ -454,7 +455,7 @@ body.v-round .diag{display:none}
   const MS2EXTRA_MAP = {
     name: 'MS2/Extra standard',
     source: 'default',
-    ochCmd: 'r\\$tsCanId\\x07%2o%2c', blockSize: null, envelope: null, signature: null,
+    ochCmd: 'r\\$tsCanId\\x07%2o%2c', blockSize: null, envelope: null, signature: null, little: false,
     channels: {
       seconds: ch('U16', 0, 's', 1, 0),
       pulseWidth1: ch('U16', 2, 'ms', 0.000666, 0),
@@ -493,6 +494,7 @@ body.v-round .diag{display:none}
     name: "motoEFI MicroSquirt-II (MSII Rev 2.88)",
     source: 'default',
     ochCmd: "a", blockSize: 82, envelope: false, signature: "MSII Rev 2.88000   ",
+    little: true,   // endianness = sml : petit-boutiste, confirmé par le datalog du 8 novembre
     channels: {
       seconds: { type: 'U16', offset: 0, units: "s", scale: 1, translate: 0 },
       pulseWidth1: { type: 'U16', offset: 2, units: "s", scale: 0.001, translate: 0 },
@@ -577,7 +579,7 @@ body.v-round .diag{display:none}
       if (!c) continue;
       const sz = SIZES[c.type];
       if (!sz || c.offset + sz > bytes.length) continue;
-      out[n] = (readRaw(dv, c.type, c.offset) + c.translate) * c.scale;
+      out[n] = (readRaw(dv, c.type, c.offset, !!map.little) + c.translate) * c.scale;
     }
     return out;
   }
@@ -587,7 +589,7 @@ body.v-round .diag{display:none}
     const sz = SIZES[b.type] || 1;
     if (b.offset + sz > bytes.length) return null;
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    let raw = readRaw(dv, b.type, b.offset);
+    let raw = readRaw(dv, b.type, b.offset, !!map.little);
     if (raw < 0) raw += 2 ** (8 * sz);
     const width = b.hi - b.lo + 1;
     return Math.floor(raw / 2 ** b.lo) % (2 ** width);
@@ -599,21 +601,36 @@ body.v-round .diag{display:none}
     for (const name in values) {
       const c = map.channels[name], v = values[name];
       if (!c || v == null || !SIZES[c.type] || c.offset + SIZES[c.type] > size || !c.scale) continue;
-      writeRaw(dv, c.type, c.offset, v / c.scale - c.translate);
+      writeRaw(dv, c.type, c.offset, v / c.scale - c.translate, !!map.little);
     }
     for (const name in bits) {
       const b = map.bits[name];
       if (!b) continue;
       const sz = SIZES[b.type] || 1;
       if (b.offset + sz > size) continue;
-      let raw = sz === 1 ? dv.getUint8(b.offset) : sz === 2 ? dv.getUint16(b.offset) : dv.getUint32(b.offset);
+      const le = !!map.little;
+      let raw = sz === 1 ? dv.getUint8(b.offset) : sz === 2 ? dv.getUint16(b.offset, le) : dv.getUint32(b.offset, le);
       const width = b.hi - b.lo + 1;
       const field = (bits[name] ? 1 : 0) % (2 ** width);
       raw = (raw - (Math.floor(raw / 2 ** b.lo) % (2 ** width)) * 2 ** b.lo) + field * 2 ** b.lo;
       raw = Math.max(0, raw) % (2 ** (8 * sz));
-      if (sz === 1) dv.setUint8(b.offset, raw); else if (sz === 2) dv.setUint16(b.offset, raw); else dv.setUint32(b.offset, raw);
+      if (sz === 1) dv.setUint8(b.offset, raw); else if (sz === 2) dv.setUint16(b.offset, raw, le); else dv.setUint32(b.offset, raw, le);
     }
     return bytes;
+  }
+  // Devine l'ordre des octets avec la batterie : la bonne lecture tombe entre 6 et 20 V, l'autre est absurde.
+  function endianGuess(map, bytes) {
+    const bv = findKey(map.channels, ['batteryVoltage', 'batt', 'battery']);
+    if (!bv) return null;
+    const c = map.channels[bv];
+    if (SIZES[c.type] < 2 || c.offset + SIZES[c.type] > bytes.length) return null;
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const val = le => (readRaw(dv, c.type, c.offset, le) + c.translate) * c.scale;
+    const ok = v => v >= 6 && v <= 20, bad = v => !(v >= 4 && v <= 30);
+    const L = val(true), B = val(false);
+    if (ok(L) && bad(B)) return 'little';
+    if (ok(B) && bad(L)) return 'big';
+    return null;
   }
 
   // ---- Lecture du .ini TunerStudio ----
@@ -648,7 +665,7 @@ body.v-round .diag{display:none}
   }
   function parseIni(text, defines) {
     defines = defines || new Set();
-    const map = { name: '', source: 'ini', ochCmd: null, blockSize: null, envelope: null, signature: null, channels: {}, bits: {} };
+    const map = { name: '', source: 'ini', ochCmd: null, blockSize: null, envelope: null, signature: null, little: false, channels: {}, bits: {} };
     let section = '';
     const stack = [];
     const active = () => stack.every(s => s.active);
@@ -679,6 +696,7 @@ body.v-round .diag{display:none}
       const val = line.slice(eq + 1).trim();
       if (key === 'signature' && map.signature == null) { const s = unquote(splitFields(val)[0]); if (s) map.signature = s; continue; }
       if (key === 'messageEnvelopeFormat') { map.envelope = /envelope/i.test(val); continue; }
+      if (key === 'endianness') { map.little = !/^big$/i.test(unquote(val)); continue; }   // « little », « sml »… : tout sauf big
       if (section !== 'outputchannels') continue;
       if (key === 'ochBlockSize') { const v = parseInt(val, 10); if (v > 0) map.blockSize = v; continue; }
       if (key === 'ochGetCommand') { map.ochCmd = unquote(val); continue; }
@@ -937,7 +955,7 @@ body.v-round .diag{display:none}
     }
   }
 
-  root.MSCore = { crc32, wrap, unwrap, SIZES, DEFAULT_MAP, MS2EXTRA_MAP, ochBytes, plausible, implausible, decode, bitValue, encode, parseIni, findKey, printable, Ecu, sleep };
+  root.MSCore = { crc32, wrap, unwrap, SIZES, DEFAULT_MAP, MS2EXTRA_MAP, ochBytes, plausible, implausible, endianGuess, decode, bitValue, encode, parseIni, findKey, printable, Ecu, sleep };
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 
@@ -994,7 +1012,7 @@ body.v-round .diag{display:none}
     hz: 0, errs: 0, log: null, wake: null, signature: ''
   };
   const G = { watch: null, state: 'off', speed: null, acc: null, t: 0, last: null, userAsked: false };   // GPS, vitesse en km/h
-  const savedMap = load('msdash.map.v2', null);
+  const savedMap = load('msdash.map.v3', null);
   if (savedMap && savedMap.channels && Object.keys(savedMap.channels).length) S.map = savedMap;
 
   // ---------- Carte des canaux ----------
@@ -1027,7 +1045,7 @@ body.v-round .diag{display:none}
     const lines = [
       '<b>' + esc(m.name || 'Carte') + '</b>',
       n + ' canaux' + (m.blockSize ? ' · bloc ' + m.blockSize + ' octets' : '') + ' · lecture ' + S.reqSize + ' octets',
-      'Commande « ' + esc(cmd) + ' » · ' + (m.envelope === false ? 'série simple' : m.envelope ? 'CRC32' : 'détection auto'),
+      'Commande « ' + esc(cmd) + ' » · ' + (m.envelope === false ? 'série simple' : m.envelope ? 'CRC32' : 'détection auto') + ' · ' + (m.little ? 'petit-boutiste' : 'gros-boutiste'),
       m.signature ? 'Signature : ' + esc(m.signature) : 'Signature : non précisée'
     ];
     if (S.tgtIgnored) lines.push('Cible AFR ignorée : échelle ×' + m.channels[C.findKey(m.channels, ALIASES.afrTgt)].scale + ' dans le .ini');
@@ -1470,7 +1488,8 @@ body.v-round .diag{display:none}
     txt((Math.round((V.rpm || 0) / 10) * 10).toLocaleString('fr-CA'), c, c - R * 0.5, R * 0.13, over ? css('--crit') : css('--amber'), { w: 700 });
     txt('TR/MIN', c, c - R * 0.395, R * 0.046, css('--dim'), { f: UI, ls: R * 0.008 });
     // Vitesse
-    txt(V.speed == null ? '—' : String(Math.round(V.speed)), c, c - R * 0.08, R * 0.42, css('--fg'), { w: 700, max: R * 0.95 });
+    if (V.speed == null) txt('—', c, c - R * 0.08, R * 0.2, css('--dim-2'), { w: 700 });   // pas de vitesse : trait discret
+    else txt(String(Math.round(V.speed)), c, c - R * 0.08, R * 0.42, css('--fg'), { w: 700, max: R * 0.95 });
     txt((s.spdUnit === 'mph' ? 'MPH' : 'KM/H') + (S.speedSrc ? '  ·  ' + S.speedSrc : ''), c, c + R * 0.145, R * 0.052, css('--dim'), { f: UI, ls: R * 0.005 });
 
     // Fenêtre multifonction
@@ -1626,6 +1645,7 @@ body.v-round .diag{display:none}
     S.signature = ecu.signature;
     S.errs = 0; S.okFrames = 0; S.lastErr = ''; S.warned = false;
     S.vals = {}; S.flags = {}; S.dirty = true;   // efface les valeurs de la démo : rien n'est affiché avant la 1re lecture
+    S.endian = { ok: 0, flip: 0, done: false, note: '' };
     ecu.onclose = byUser => {
       if (S.ecu !== ecu) return;
       S.ecu = null;
@@ -1671,6 +1691,7 @@ body.v-round .diag{display:none}
       const t0 = performance.now();
       try {
         const data = await ecu.realtime(S.reqSize, S.map);
+        checkEndian(data);
         ingest(data);
         frames++; S.okFrames++;
         if (fails >= 3) setConn('on', 'Connecté');
@@ -1697,6 +1718,20 @@ body.v-round .diag{display:none}
       if (dt < 60) await C.sleep(60 - dt);
     }
   }
+  // Filet de sécurité : si la batterie n'a de sens que lue dans l'autre ordre d'octets, 3 fois de suite, on bascule.
+  function checkEndian(bytes) {
+    const E = S.endian;
+    if (!E || E.done) return;
+    const g = C.endianGuess(S.map, bytes);
+    if (!g) return;
+    const want = g === 'little';
+    if (want === !!S.map.little) { if (++E.ok >= 3) E.done = true; return; }
+    if (++E.flip >= 3) {
+      S.map = Object.assign({}, S.map, { little: want });
+      E.note = want ? 'petit-boutiste' : 'gros-boutiste';
+      E.done = true; S.dirty = true;
+    }
+  }
   function commSummary() {
     const l = S.ecu && S.ecu.last, parts = [];
     if (S.lastErr) parts.push(S.lastErr);
@@ -1715,6 +1750,7 @@ body.v-round .diag{display:none}
     }
     if (e && e.cmdOverride) lines.push('Commande ajustée : ' + Array.from(C.ochBytes(e.cmdOverride, 0).bytes, x => x.toString(16).padStart(2, '0')).join(' '));
     if (e && e.learned) lines.push('Bloc ajusté : ' + e.learned + ' octets (appris en direct)');
+    lines.push('Ordre des octets : ' + (S.map.little ? 'petit-boutiste' : 'gros-boutiste') + (S.endian && S.endian.note ? ' (ajusté en direct)' : ''));
     $('commInfo').innerHTML = lines.join('<br>');
   }
   function ingest(bytes) {
@@ -1901,7 +1937,7 @@ body.v-round .diag{display:none}
       if (n < 5) { notice("Ce fichier ne contient pas de section [OutputChannels] lisible. Prends le mainController.ini du dossier projectCfg de ton projet TunerStudio.", 'crit'); return; }
       m.name = file.name;
       S.map = m;
-      save('msdash.map.v2', m);
+      save('msdash.map.v3', m);
       applyMap();
       if (!S.res.rpm) notice('Carte chargée, mais le canal rpm est introuvable. Envoie-moi ce .ini et j\'ajusterai les noms.', 'warn');
       else { hideNotice(); checkSignature(); }
@@ -1922,7 +1958,7 @@ body.v-round .diag{display:none}
   $('btnFull').addEventListener('click', fullscreen);
   $('noticeClose').addEventListener('click', hideNotice);
   $('drawer').addEventListener('change', e => { if (e.target.id === 'iniFile') { loadIniFile(e.target.files[0]); e.target.value = ''; } else onSettingsChange(e); });
-  $('btnMapReset').addEventListener('click', () => { S.map = C.DEFAULT_MAP; save('msdash.map.v2', null); applyMap(); updateDiag(); });
+  $('btnMapReset').addEventListener('click', () => { S.map = C.DEFAULT_MAP; save('msdash.map.v3', null); applyMap(); updateDiag(); });
   $('rpmPeak').parentElement.style.pointerEvents = 'auto';
   $('rpmPeak').parentElement.title = 'Touche pour remettre à zéro';
   $('rpmPeak').parentElement.addEventListener('click', () => { S.peak = 0; S.peakSpd = 0; S.dirty = true; needDraw = true; });
