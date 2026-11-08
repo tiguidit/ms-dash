@@ -1,5 +1,5 @@
 // Cache hors ligne : l'app s'ouvre même sans réseau (sentier, chalet).
-const CACHE = 'msdash-v4';
+const CACHE = 'msdash-v5';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));

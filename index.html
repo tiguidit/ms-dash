@@ -216,7 +216,7 @@ body.v-round .diag{display:none}
 .group > .lbl{color:var(--fg)}
 .help{margin:0;font-size:12px;line-height:1.5;color:var(--dim)}
 .help code{font-family:var(--f-num);font-size:11.5px;color:var(--fg);background:var(--panel-2);padding:1px 5px;border-radius:3px;word-break:break-all}
-.mapinfo{font-family:var(--f-num);font-size:12px;line-height:1.5;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.mapinfo{font-family:var(--f-num);font-size:12px;line-height:1.5;overflow-wrap:anywhere;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .file{position:relative;overflow:hidden}
 .file input{position:absolute;inset:0;opacity:0;cursor:pointer}
@@ -360,6 +360,7 @@ body.v-round .diag{display:none}
 
   <div class="group">
     <span class="lbl">Communication</span>
+    <div class="mapinfo" id="commInfo">Pas encore connecté.</div>
     <div class="fields">
       <div class="field"><label for="setProto">Protocole</label>
         <select id="setProto">
@@ -707,15 +708,22 @@ body.v-round .diag{display:none}
     for (const a of aliases) { const k = keys.find(x => x.toLowerCase() === a.toLowerCase()); if (k) return k; }
     return null;
   }
-  // Sans CRC, un paquet décalé se repère à des valeurs impossibles : RPM négatif ou batterie hors de 4 à 30 V.
-  function plausible(map, bytes) {
-    if (!map || !map.channels) return true;
+  // Sans CRC, un paquet décalé se repère à des valeurs impossibles : RPM hors de 0 à 25 000, ou batterie hors de
+  // 4 à 30 V. La batterie ne sert de contrôle qu'après 3 lectures normales : certains montages ne la mesurent pas.
+  function implausible(map, bytes, st) {
+    if (!map || !map.channels) return '';
     const r = findKey(map.channels, ['rpm']), bv = findKey(map.channels, ['batteryVoltage', 'batt', 'battery']);
     const v = decode(map, bytes, [r, bv].filter(Boolean));
-    if (r && v[r] != null && (v[r] < 0 || v[r] > 25000)) return false;
-    if (bv && v[bv] != null && (v[bv] < 4 || v[bv] > 30)) return false;
-    return true;
+    if (r && v[r] != null && (v[r] < 0 || v[r] > 25000)) return 'rpm ' + Math.round(v[r]);
+    if (bv && v[bv] != null) {
+      const ok = v[bv] >= 4 && v[bv] <= 30;
+      if (!ok && st && st.battLive) return 'batterie ' + v[bv].toFixed(1) + ' V';
+      if (ok && st) { st.battGood = (st.battGood || 0) + 1; if (st.battGood >= 3) st.battLive = true; }
+    }
+    return '';
   }
+  const plausible = (map, bytes) => !implausible(map, bytes, { battLive: true });
+  const hexs = b => Array.from(b, x => x.toString(16).padStart(2, '0')).join(' ');
   const printable = b => Array.from(b, x => (x >= 32 && x < 127) ? String.fromCharCode(x) : ' ').join('').replace(/\s+/g, ' ').trim();
 
   // ---- Lien série : Web Serial (Bluetooth RFCOMM sur Android, USB sur ordinateur) ----
@@ -726,6 +734,7 @@ body.v-round .diag{display:none}
       this.listeners = new Set();
       this.closing = false; this.alive = false;
       this.mode = null; this.signature = ''; this.blockSize = 0;
+      this.noResp = 0; this.probed = false; this.cmdOverride = null; this.learned = 0; this.last = null; this.lastLen = 0;
       this.onclose = null;
     }
     async open() {
@@ -800,29 +809,51 @@ body.v-round .diag{display:none}
       return r;
     }
     async quiet(ms, cap) { const end = now() + cap; while (now() - this.lastRx < ms && now() < end) await sleep(5); }
+    note(cmd, bytes, expect) { this.last = { cmd: hexs(cmd), len: bytes.length, expect: expect || 0, head: hexs(bytes.subarray(0, 24)) }; }
+    learn(n) { this.blockSize = n; this.learned = n; this.anoms = []; }
+    // Note une taille de réponse anormale ; renvoie combien de fois elle est revenue sur les 12 dernières lectures.
+    anomaly(n) {
+      this.anoms = (this.anoms || []).filter(a => a.i > this.req - 12);
+      this.anoms.push({ n, i: this.req });
+      return this.anoms.filter(a => a.n === n).length;
+    }
     async txLegacy(cmd, o) {
       const expect = o.expect || 0, min = o.min || 1, idle = o.idle || 60;
       if (expect) {
         // Chaque réponse est consommée en entier ; un octet reçu depuis vient d'une réponse décalée.
         await this.quiet(30, 300);
-        if (this.buf.length) { this.clear(); throw new Error('octets en trop'); }
+        if (this.buf.length) {
+          const e = new Error(this.buf.length + ' octets en trop après la réponse précédente');
+          e.extra = this.buf.length; this.note(cmd, this.buf, expect); this.clear();
+          throw e;
+        }
       }
       this.clear();
       await this.send(cmd);
-      // Taille connue : on exige le bloc complet. Une pause du Bluetooth au milieu d'une réponse ne doit pas
-      // couper le paquet, sinon la fin arrive au cycle suivant et décale toutes les valeurs.
       const got = await this.waitFor(b => {
         if (expect) return b.length >= expect ? b : undefined;
         if (b.length >= min && now() - this.lastRx > idle) return b;
         return undefined;
       }, o.timeout || 700);
-      if (got) {
-        const frame = expect && got.length > expect ? got.slice(got.length - expect) : got.slice();
-        this.clear();
-        return frame;
+      if (expect) {
+        // Taille connue. Bloc atteint : 30 ms de silence confirment qu'il ne dépasse pas. Réponse partielle :
+        // on laisse finir ce qui arrive encore (Bluetooth lent) avant de conclure. Seul un bloc exact est accepté.
+        await this.quiet(got ? 30 : 250, got ? 300 : 1000);
+        const all = this.buf.slice();
+        this.note(cmd, all, expect); this.lastLen = all.length; this.clear();
+        if (all.length === expect) return all;
+        const e = new Error(all.length > expect ? 'réponse trop longue (' + all.length + ' octets sur ' + expect + ')'
+          : all.length ? 'réponse incomplète (' + all.length + ' octets sur ' + expect + ')' : 'aucune réponse');
+        if (all.length > expect) e.over = all.length; else e.short = all.length;
+        e.frame = all;
+        throw e;
       }
-      if (!expect && this.buf.length >= min) { const frame = this.buf.slice(); this.clear(); return frame; }
-      throw new Error(this.buf.length ? 'paquet incomplet' : 'pas de réponse');
+      const all = this.buf.slice();
+      this.note(cmd, all, 0); this.lastLen = all.length; this.clear();
+      if (got || all.length >= min) return all;
+      const e = new Error(all.length ? 'réponse incomplète (' + all.length + ' octets)' : 'aucune réponse');
+      e.short = all.length; e.frame = all;
+      throw e;
     }
     async detect(pref, map) {
       await this.drain(150);
@@ -855,11 +886,47 @@ body.v-round .diag{display:none}
         if (r.data.length < size) throw new Error('paquet trop court');
         return r.data;
       }
-      const expect = och.counted ? size : (this.blockSize || 0);
-      const b = await this.txLegacy(och.bytes, { expect, min: size, idle: 100, timeout: 650 });
-      if (b.length < size) throw new Error('paquet trop court');
-      if (!plausible(map, b)) throw new Error('paquet incohérent');
+      const cmd = this.cmdOverride ? ochBytes(this.cmdOverride, size) : och;
+      const fixed = !cmd.counted && !!this.blockSize;
+      const expect = cmd.counted ? size : (this.blockSize || 0);
+      this.req = (this.req || 0) + 1;
+      let b = null;
+      try {
+        b = await this.txLegacy(cmd.bytes, { expect, min: size, idle: 100, timeout: 650 });
+        this.noResp = 0;
+      } catch (e) {
+        // La vraie taille du bloc diffère du .ini : adoptée après 3 constats identiques sur les 12 dernières
+        // lectures, pour qu'un incident Bluetooth isolé ne la fausse pas.
+        if (fixed) {
+          const n = e.over || (e.extra ? expect + e.extra : 0) || (e.short >= size ? e.short : 0);
+          if (n && this.anomaly(n) >= 3) { this.learn(n); if (e.frame && e.frame.length === n) b = e.frame; }
+        }
+        if (!b && e.short === 0 && ++this.noResp >= 3 && !this.probed) {
+          b = await this.probe(size, map);              // la commande du .ini reste muette : on en essaie d'autres
+        }
+        if (!b) throw e;
+      }
+      if (b.length < size) throw new Error('paquet trop court (' + b.length + ' octets)');
+      const why = implausible(map, b, this);
+      if (why) throw new Error('valeurs impossibles (' + why + ')');
       return b;
+    }
+    // Commandes de lecture en temps réel connues des firmwares MS2 (lecture seule).
+    async probe(size, map) {
+      this.probed = true;
+      for (const alt of ['A', 'a\\x00\\x06', 'a\\x00\\x07']) {
+        if (map && alt === map.ochCmd) continue;
+        await this.drain(150);
+        try {
+          const b = await this.txLegacy(ochBytes(alt, size).bytes, { min: size, idle: 120, timeout: 800 });
+          if (b.length >= size && !implausible(map, b, null)) {
+            this.cmdOverride = alt; this.learn(b.length);
+            return b;
+          }
+        } catch (_) { /* suivante */ }
+      }
+      await this.drain(150);
+      return null;
     }
     async close() {
       this.closing = true;
@@ -870,7 +937,7 @@ body.v-round .diag{display:none}
     }
   }
 
-  root.MSCore = { crc32, wrap, unwrap, SIZES, DEFAULT_MAP, MS2EXTRA_MAP, ochBytes, plausible, decode, bitValue, encode, parseIni, findKey, printable, Ecu, sleep };
+  root.MSCore = { crc32, wrap, unwrap, SIZES, DEFAULT_MAP, MS2EXTRA_MAP, ochBytes, plausible, implausible, decode, bitValue, encode, parseIni, findKey, printable, Ecu, sleep };
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 
@@ -1483,9 +1550,10 @@ body.v-round .diag{display:none}
     $('simTag').hidden = S.source !== 'demo';
     $('cluster').classList.toggle('stale', S.source === 'idle');
   }
-  function notice(text, kind) {
+  function notice(text, kind, tag) {
     $('noticeText').textContent = text;
     $('notice').dataset.kind = kind || 'warn';
+    $('notice').dataset.tag = tag || '';
     $('notice').hidden = false;
   }
   const hideNotice = () => { $('notice').hidden = true; };
@@ -1556,7 +1624,8 @@ body.v-round .diag{display:none}
     S.ecu = ecu;
     S.everConnected = true;
     S.signature = ecu.signature;
-    S.errs = 0;
+    S.errs = 0; S.okFrames = 0; S.lastErr = ''; S.warned = false;
+    S.vals = {}; S.flags = {}; S.dirty = true;   // efface les valeurs de la démo : rien n'est affiché avant la 1re lecture
     ecu.onclose = byUser => {
       if (S.ecu !== ecu) return;
       S.ecu = null;
@@ -1603,13 +1672,23 @@ body.v-round .diag{display:none}
       try {
         const data = await ecu.realtime(S.reqSize, S.map);
         ingest(data);
-        frames++;
+        frames++; S.okFrames++;
         if (fails >= 3) setConn('on', 'Connecté');
+        if (S.warned && $('notice').dataset.tag === 'comm') hideNotice();
+        S.warned = false;
         fails = 0;
       } catch (e) {
         if (!ecu.alive || S.ecu !== ecu) break;
-        fails++; S.errs++;
-        if (fails === 3) setConn('warn', 'Pas de réponse');
+        fails++; S.errs++; S.lastErr = e && e.message ? e.message : String(e);
+        if (fails === 3) {
+          setConn('warn', 'Pas de réponse');
+          S.vals = {}; S.flags = {}; S.dirty = true;   // pas de vieilles valeurs affichées comme si elles étaient actuelles
+          if (!S.warned) {
+            S.warned = true;
+            notice('Le MicroSquirt a répondu à la connexion' + (S.signature ? ' (' + S.signature + ')' : '') +
+              ", mais pas à la lecture des données : " + commSummary() + ". L'app continue d'essayer et s'ajuste seule. Le détail est dans Réglages › Communication.", 'warn', 'comm');
+          }
+        }
         await ecu.drain(120);
       }
       const n = performance.now();
@@ -1617,6 +1696,26 @@ body.v-round .diag{display:none}
       const dt = performance.now() - t0;
       if (dt < 60) await C.sleep(60 - dt);
     }
+  }
+  function commSummary() {
+    const l = S.ecu && S.ecu.last, parts = [];
+    if (S.lastErr) parts.push(S.lastErr);
+    if (l) parts.push('commande ' + l.cmd + ', ' + l.len + ' octets reçus' + (l.expect ? ' sur ' + l.expect + ' attendus' : ''));
+    return parts.join(' ; ') || 'aucun détail';
+  }
+  function renderComm() {
+    const e = S.ecu, l = e && e.last, lines = [];
+    lines.push('État : ' + esc($('connText').textContent));
+    lines.push('Signature : ' + esc(S.signature || '—'));
+    lines.push('Lectures réussies : ' + (S.okFrames || 0) + ' · erreurs : ' + (S.errs || 0));
+    if (S.lastErr) lines.push('Dernière erreur : ' + esc(S.lastErr));
+    if (l) {
+      lines.push('Dernier échange : commande ' + esc(l.cmd) + ' → ' + l.len + ' octets' + (l.expect ? ' (' + l.expect + ' attendus)' : ''));
+      if (l.head) lines.push('Début : ' + esc(l.head));
+    }
+    if (e && e.cmdOverride) lines.push('Commande ajustée : ' + Array.from(C.ochBytes(e.cmdOverride, 0).bytes, x => x.toString(16).padStart(2, '0')).join(' '));
+    if (e && e.learned) lines.push('Bloc ajusté : ' + e.learned + ' octets (appris en direct)');
+    $('commInfo').innerHTML = lines.join('<br>');
   }
   function ingest(bytes) {
     S.vals = C.decode(S.map, bytes, S.need);
@@ -1768,6 +1867,7 @@ body.v-round .diag{display:none}
     $('tripInfo').textContent = (S.trip * (mi ? 0.621371 : 1)).toLocaleString('fr-CA', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + (mi ? ' mi' : ' km');
     $('setProto').value = s.proto;
     $('setBaud').value = String(s.baud);
+    renderComm();
   }
   function readSettings() {
     const s = S.set;
@@ -1851,7 +1951,7 @@ body.v-round .diag{display:none}
   { const h = location.hash.slice(1); setView(h === 'rond' ? 'round' : h === 'grappe' ? 'cluster' : load('msdash.view', 'round')); }
   startDemo();
   setInterval(renderReadouts, 100);
-  setInterval(() => { renderGps(); if (G.state !== 'off') S.dirty = true; }, 1000);   // fait vieillir la vitesse sans nouvelle position
+  setInterval(() => { renderGps(); if (G.state !== 'off') S.dirty = true; if (!$('drawer').hidden) renderComm(); }, 1000);   // fait vieillir la vitesse sans nouvelle position
   renderGps();
   if (asFile && !inFrame) notice(FILE_MSG, 'warn');
   else if (!inFrame) gpsStart(false);   // version installée : la permission est demandée la première fois
